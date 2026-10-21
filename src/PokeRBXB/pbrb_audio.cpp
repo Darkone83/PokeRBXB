@@ -20,6 +20,7 @@ static HANDLE s_thread = NULL, s_event = NULL;
 static CRITICAL_SECTION s_lock;
 static int s_lockValid = 0, s_ready = 0;
 static int s_outputVolume = 10, s_outputPaused = 0;
+static unsigned s_transitionGain = 256u;
 static DWORD s_nextChunk = 0;
 static volatile DWORD s_lastRenderTick = 0;
 static PbrbSynth s_synth;
@@ -86,8 +87,10 @@ static void FillChunk(void* ptr, DWORD bytes) {
         if (s_outputPaused)memset(s_stereo, 0, n * 4u);
         else {
             PbrbSynthRender(&s_synth, s_stereo, (int)n);
-            if (s_outputVolume < 10)for (unsigned i = 0; i < n * 2u; ++i)
-                s_stereo[i] = (short)((int)s_stereo[i] * s_outputVolume / 10);
+            if (s_outputVolume < 10 || s_transitionGain < 256u)
+                for (unsigned i = 0; i < n * 2u; ++i)
+                    s_stereo[i] = (short)((int)s_stereo[i] * s_outputVolume *
+                        (int)s_transitionGain / 2560);
         }
         s_lastRenderTick = GetTickCount();
         memcpy(dst, s_stereo, n * 4u);
@@ -131,7 +134,7 @@ int PbrbAudioInit() {
     HRESULT hr;
     if (s_ready)return 1;
     PbrbSynthInit(&s_synth, PBRB_AUDIO_RATE);
-    s_outputVolume = 10; s_outputPaused = 0;
+    s_outputVolume = 10; s_outputPaused = 0; s_transitionGain = 256u;
     InitializeCriticalSection(&s_lock); s_lockValid = 1;
     hr = DirectSoundCreate(NULL, &s_ds, NULL);
     if (FAILED(hr) || !s_ds) { PbrbAudioShutdown(); return 0; }
@@ -343,6 +346,12 @@ void PbrbAudioSetVolume(int volume) {
     if (volume > 10)volume = 10;
     if (s_lockValid)EnterCriticalSection(&s_lock);
     s_outputVolume = volume;
+    if (s_lockValid)LeaveCriticalSection(&s_lock);
+}
+void PbrbAudioSetTransitionGain(unsigned gain) {
+    if (gain > 256u)gain = 256u;
+    if (s_lockValid)EnterCriticalSection(&s_lock);
+    s_transitionGain = gain;
     if (s_lockValid)LeaveCriticalSection(&s_lock);
 }
 void PbrbAudioSetPaused(int paused) {

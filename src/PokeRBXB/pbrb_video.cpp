@@ -114,9 +114,10 @@ void PbrbVideoShutdown() {
 void PbrbBegin() { g_dev->Clear(0, NULL, D3DCLEAR_TARGET, 0xFF070911, 1.0f, 0); g_dev->BeginScene(); }
 void PbrbEnd() { g_dev->EndScene(); g_dev->Present(NULL, NULL, NULL, NULL); }
 
-static void DrawVerts(V* v, int primitives, IDirect3DTexture8* tex, int pointFilter = 0) {
+static void DrawVerts(V* v, int primitives, IDirect3DTexture8* tex, int pointFilter = 0,
+    int applyCalibration = 1, int opaque = 0) {
     if (!g_dev)return;
-    if (g_screen_percent != 100 || g_screen_horizontal || g_screen_vertical) {
+    if (applyCalibration && (g_screen_percent != 100 || g_screen_horizontal || g_screen_vertical)) {
         const float scale = (float)g_screen_percent / 100.0f;
         const float x = g_sw * ((1.0f - scale) * 0.5f + g_screen_horizontal / 100.0f);
         const float y = g_sh * ((1.0f - scale) * 0.5f + g_screen_vertical / 100.0f);
@@ -126,14 +127,14 @@ static void DrawVerts(V* v, int primitives, IDirect3DTexture8* tex, int pointFil
         }
     }
     g_dev->SetRenderState(D3DRS_ZENABLE, FALSE);
-    g_dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+    g_dev->SetRenderState(D3DRS_ALPHABLENDENABLE, opaque ? FALSE : TRUE);
     g_dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
     g_dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
     g_dev->SetTexture(0, tex);
     g_dev->SetTextureStageState(0, D3DTSS_COLOROP, tex ? D3DTOP_MODULATE : D3DTOP_SELECTARG2);
     g_dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
     g_dev->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
-    g_dev->SetTextureStageState(0, D3DTSS_ALPHAOP, tex ? D3DTOP_MODULATE : D3DTOP_SELECTARG2);
+    g_dev->SetTextureStageState(0, D3DTSS_ALPHAOP, tex && !opaque ? D3DTOP_MODULATE : D3DTOP_SELECTARG2);
     g_dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
     g_dev->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
     g_dev->SetTextureStageState(0, D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
@@ -197,3 +198,76 @@ void PbrbSpriteGame(PbrbTexture* t, float x, float y, float w, float h, DWORD ti
     MakeQuad(v, x, y, w, h, tint, 0.0f, 0.0f, (float)t->width / t->padded_width, (float)t->height / t->padded_height);
     DrawVerts(v, 2, t->gpu, !g_smooth_game);
 }
+
+/* Fit decoded video using physical pixel aspect and saved calibration.
+   Keep the destination on-screen; even edges preserve the established movie
+   placement across the SD and HD output modes. */
+static RECT PbrbVideoIntroRect(unsigned width, unsigned height) {
+    RECT rect = { 0, 0, g_sw, g_sh };
+    if (!width || !height || g_pixel_aspect <= 0.0f)return rect;
+    const float aspect = ((float)width / (float)height) / g_pixel_aspect;
+    float movieWidth = (float)g_sw, movieHeight = movieWidth / aspect;
+    if (movieHeight > g_sh) {
+        movieHeight = (float)g_sh; movieWidth = movieHeight * aspect;
+    }
+    const float scale = (float)g_screen_percent / 100.0f;
+    const float offsetX = g_sw * ((1.0f - scale) * 0.5f + g_screen_horizontal / 100.0f);
+    const float offsetY = g_sh * ((1.0f - scale) * 0.5f + g_screen_vertical / 100.0f);
+    int w = (int)(movieWidth * scale + 0.5f) & ~1;
+    int h = (int)(movieHeight * scale + 0.5f) & ~1;
+    if (w < 2)w = 2; if (w > g_sw)w = g_sw & ~1;
+    if (h < 2)h = 2; if (h > g_sh)h = g_sh & ~1;
+    int left = (int)(((g_sw - movieWidth) * 0.5f) * scale + offsetX + 0.5f);
+    int top = (int)(((g_sh - movieHeight) * 0.5f) * scale + offsetY + 0.5f);
+    if (left < 0)left = 0; if (left > g_sw - w)left = g_sw - w;
+    if (top < 0)top = 0; if (top > g_sh - h)top = g_sh - h;
+    rect.left = left & ~1; rect.top = top & ~1;
+    rect.right = rect.left + w; rect.bottom = rect.top + h;
+    return rect;
+}
+
+/* Fade covers the physical output, including areas outside calibration.
+   Call inside an active scene after the launcher has drawn all its layers. */
+void PbrbVideoBlackFade(unsigned opacity) {
+    if (!opacity || !g_dev)return;
+    if (opacity > 255u)opacity = 255u;
+    V v[6];
+    MakeQuad(v, 0, 0, (float)g_sw, (float)g_sh, opacity << 24,
+        0.0f, 0.0f, 0.0f, 0.0f);
+    DrawVerts(v, 2, NULL, 0, 0);
+}
+
+/* Native LIN_A8R8G8B8 frames use pixel-unit UVs. Decode at source size and
+   scale once with linear filtering, independently of the game's pixel filter.
+   RGB modulation provides a real fade and ignores unspecified movie alpha. */
+static void PbrbVideoPresentIntroFrame(IDirect3DTexture8* texture,
+    const RECT& destination, unsigned width, unsigned height, unsigned gain) {
+    if (!g_dev)return;
+    if (gain > 256u)gain = 256u;
+    g_dev->Clear(0, NULL, D3DCLEAR_TARGET, 0xFF000000, 1.0f, 0);
+    g_dev->BeginScene();
+    if (texture && width && height) {
+        const DWORD level = (gain * 255u + 128u) / 256u;
+        const DWORD tint = 0xFF000000u | (level << 16) | (level << 8) | level;
+        V v[6];
+        MakeQuad(v, (float)destination.left, (float)destination.top,
+            (float)(destination.right - destination.left),
+            (float)(destination.bottom - destination.top), tint,
+            0.0f, 0.0f, (float)width, (float)height);
+        g_dev->SetPixelShader(0);
+        g_dev->SetRenderState(D3DRS_YUVENABLE, FALSE);
+        g_dev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+        g_dev->SetRenderState(D3DRS_FOGENABLE, FALSE);
+        for (unsigned stage = 1; stage < 4; ++stage) {
+            g_dev->SetTexture(stage, NULL);
+            g_dev->SetTextureStageState(stage, D3DTSS_COLOROP, D3DTOP_DISABLE);
+            g_dev->SetTextureStageState(stage, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+        }
+        DrawVerts(v, 2, texture, 0, 0, 1);
+    }
+    g_dev->EndScene();
+    g_dev->Present(NULL, NULL, NULL, NULL);
+}
+
+// Included here so source-only updates do not require another compile item.
+#include "pbrb_xmv.inl"

@@ -92,6 +92,7 @@
     <None Include="pbrb_world_story_text.inl" />
     <None Include="pbrb_world_traversal.inl" />
     <None Include="pbrb_world_traversal_data.inl" />
+    <None Include="pbrb_xmv.inl" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
@@ -228,7 +229,7 @@ MKDIR "$(OutDir)XISO"
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>xboxkrnl.lib;libcmt.lib;xapilib.lib;d3d8.lib;d3dx8.lib;xgraphics.lib;dsound.lib</AdditionalDependencies>
+      <AdditionalDependencies>xboxkrnl.lib;libcmt.lib;xapilib.lib;d3d8.lib;d3dx8.lib;xgraphics.lib;dsound.lib;xmv.lib;xnet.lib</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <BaseAddress>
       </BaseAddress>

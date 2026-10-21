@@ -36,6 +36,9 @@ void PbrbAudioPauseSequencer(unsigned frames);
 /* Global output preferences are controlled by the launcher. Mutes and
    master volume (0..10) keep sequencing and sound-wait durations intact. */
 void PbrbAudioSetVolume(int volume);
+/* Temporary launcher transition gain, 0 silent .. 256 full. Does not change
+   stored master volume, sequencing, or Now Playing visibility. */
+void PbrbAudioSetTransitionGain(unsigned gain);
 /* Reconnect pause freezes the synth; rendering continues as silence. */
 void PbrbAudioSetPaused(int paused);
 void PbrbAudioSetMusic(int enabled);

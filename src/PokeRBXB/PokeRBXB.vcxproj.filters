@@ -240,5 +240,8 @@
     <None Include="pbrb_world_field.inl">
       <Filter>Header Files</Filter>
     </None>
+    <None Include="pbrb_xmv.inl">
+      <Filter>Header Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

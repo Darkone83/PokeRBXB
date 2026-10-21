@@ -13,6 +13,7 @@
 // Install-relative Xbox paths. XBE at D:\default.xbe, resources in D:\data.
 static const char* BG_PATH = "D:\\data\\img\\launch_bg.png";
 static const char* FONT_PATH = "D:\\data\\font\\font.DDF";
+static const char* INTRO_PATH = "D:\\data\\xmv\\intro.xmv";
 static const char* RED_PATH = "D:\\data\\red.xpd";
 static const char* BLUE_PATH = "D:\\data\\blue.xpd";
 static const char* RED_BORDER = "D:\\data\\img\\red_border.png";
@@ -23,6 +24,9 @@ static float g_borderU0 = 0, g_borderV0 = 0, g_borderU1 = 1, g_borderV1 = 1;
 static PbrbPackStatus g_status[2] = { PBRB_MISSING,PBRB_MISSING };
 static int g_selected = 0;
 static int g_ingame = 0;
+static int g_launcher_fade = 0, g_launcher_fade_first = 0;
+static DWORD g_launcher_fade_start = 0;
+static const DWORD LAUNCHER_FADE_MS = 300u;
 static char g_message[80] = "";
 static DWORD g_message_start = 0;
 enum LauncherPage {
@@ -445,6 +449,27 @@ static void HandleGameInput(const PbrbEvents* input) {
         SetMessage("RETURNED TO LAUNCHER");
     }
 }
+static void DrawLauncherFade() {
+    if (!g_launcher_fade)return;
+    unsigned gain = 0;
+    if (g_launcher_fade_first) {
+        /* Start only when the fully prepared launcher is actually drawn.
+           Its first presented frame is black, even after slow asset reads. */
+        g_launcher_fade_first = 0;
+        g_launcher_fade_start = GetTickCount();
+    }
+    else {
+        const DWORD elapsed = (DWORD)(GetTickCount() - g_launcher_fade_start);
+        if (elapsed >= LAUNCHER_FADE_MS)gain = 256u;
+        else {
+            const unsigned t = (unsigned)(elapsed * 256u / LAUNCHER_FADE_MS);
+            gain = (t * t * (768u - 2u * t) + 32768u) / 65536u;
+        }
+    }
+    PbrbAudioSetTransitionGain(gain);
+    if (gain < 256u)PbrbVideoBlackFade(255u - gain * 255u / 256u);
+    else g_launcher_fade = 0;
+}
 static void Render() {
     if (g_ingame) {
         PbrbBegin();
@@ -469,6 +494,7 @@ static void Render() {
     DrawSlot(0); DrawSlot(1); DrawNowPlaying(); DrawFooter();
     if (g_page != LAUNCHER_SELECT)DrawModal();
     if (g_page == LAUNCHER_CALIBRATION)DrawCalibrationGuides();
+    DrawLauncherFade();
     PbrbEnd();
 }
 void __cdecl main() {
@@ -476,16 +502,34 @@ void __cdecl main() {
     PbrbSetArtworkCanvas(1672, 941);
     PbrbInputInit();
     PbrbLoadPreferences();
+    /* Play once per application start, before PNG/font loads, pack scans or
+       the synth worker compete with the movie for memory and disk time. */
+    const PbrbPreferences* startupOptions = PbrbGetPreferences();
+    PbrbSetScreenCalibration(startupOptions->screenScale,
+        startupOptions->screenX, startupOptions->screenY);
+    int introInputGuard = PbrbVideoPlayIntro(INTRO_PATH, startupOptions->volume) != 0;
     const int soundReady = PbrbAudioInit();
     ApplyPreferences();
+    /* Silence queued launcher samples until its visual fade starts. This
+       transient gain never changes the player's saved master volume. */
+    PbrbAudioSetTransitionGain(introInputGuard ? 0u : 256u);
     if (!soundReady)OutputDebugStringA("PokeRBXB: DirectSound unavailable (continuing silent)\n");
     if (!PbrbLoadPNG(BG_PATH, &g_bg))OutputDebugStringA("PokeRBXB: background load failed\n");
     if (!PbrbFontLoad(FONT_PATH))OutputDebugStringA("PokeRBXB: font.DDF missing/invalid\n");
     ScanPacks();
     RefreshSaveSummaries();
     StartLauncherMusic();
+    g_launcher_fade = g_launcher_fade_first = introInputGuard;
     for (;;) {
         const PbrbEvents input = PbrbInputPoll();
+        if (g_launcher_fade || introInputGuard) {
+            /* Consume input throughout the fade and until controls are
+               released afterward. Disconnection cannot count as neutral. */
+            if (!g_launcher_fade && input.connected && ControllerNeutral(&input))
+                introInputGuard = 0;
+            Render();
+            continue;
+        }
         if (g_ingame)HandleGameInput(&input);
         else if (g_page == LAUNCHER_DIALOG) {
             if (input.exit)g_page = LAUNCHER_SELECT;

@@ -24,6 +24,9 @@ void PbrbSetGameArea(float left, float top, float width, float height);
 PbrbRect PbrbGameRect();
 void PbrbBegin();
 void PbrbEnd();
+// Full output black cover for transitions, unaffected by screen calibration.
+// Draw after the scene, before PbrbEnd; opacity is 0..255.
+void PbrbVideoBlackFade(unsigned opacity);
 
 // One full-frame transform, shared by the art, typography and focus geometry.
 // Center/contain preserves the 16:9 art on 4:3 monitors; black letterbox bars.
@@ -48,3 +51,10 @@ void PbrbSpritePoint(PbrbTexture* tex, float x, float y, float w, float h, DWORD
 void PbrbSetScreenCalibration(int percent, int horizontal, int vertical);
 void PbrbSetSmoothFiltering(int smooth);
 void PbrbSpriteGame(PbrbTexture* tex, float x, float y, float w, float h, DWORD tint);
+
+// Optional startup XMV, using the native decoder and bounded packet reads.
+// Call on the D3D/main thread after input/preferences init, before AudioInit.
+// Master volume is 0..10. Returns 1 on completion/skip, 0 if absent, -1 on
+// failure; callers continue to the launcher and consume held skip input.
+// Requires the RXDK xmv.lib in the linker's explicit dependencies.
+int PbrbVideoPlayIntro(const char* path, int volume);
