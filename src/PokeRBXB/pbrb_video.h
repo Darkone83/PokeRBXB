@@ -42,5 +42,9 @@ void PbrbSpritePoint(PbrbTexture* tex, float x, float y, float w, float h, DWORD
 
 // The gameplay surface alone follows the player's Sharp/Smooth preference.
 // SpritePoint remains the fixed reference path for diagnostics/comparisons.
+/* Final output transform shared by borders, game pixels, text and glyphs.
+   Logical game placement/aspect remains unchanged. Percent is 80..100;
+   horizontal/vertical offsets are -5..5 percent of the output surface. */
+void PbrbSetScreenCalibration(int percent, int horizontal, int vertical);
 void PbrbSetSmoothFiltering(int smooth);
 void PbrbSpriteGame(PbrbTexture* tex, float x, float y, float w, float h, DWORD tint);

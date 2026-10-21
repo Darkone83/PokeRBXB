@@ -76,6 +76,7 @@ struct PbrbPlay {
     int question, questionValue, worldEvent, worldSoundPhase, battleStep, battleSelection;
     int endpoint, exitRequested, hadSave, saveInfo, savePending;
     int noticeReturn, exitReturn, exitSelection, textError;
+    int exitCanSave, exitSaveFailed; /* transient platform exit prompt */
     unsigned repeatHeld, repeatFrames;
 };
 void PbrbPlayInit(PbrbPlay*, PbrbWorld*, PbrbGb*, unsigned game);

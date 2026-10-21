@@ -347,7 +347,6 @@ int PbrbSynthPlaySfxModified(PbrbSynth* s, int effect, unsigned frequency, unsig
     if (effect == PBRB_SFX_POKEFLUTE && s->musicBank == BATTLE_BANK) {
         /* Music_PokeFluteInBattle starts CAUGHT_MON and immediately replaces
            its three pointers. These are the original replacement streams. */
-        if (!s->effectsOn)return 1;
         if (!BeginSfx(s, BATTLE_BANK, 0x201ceu))return 0;
         s->effect[0].pc = 0x22322u; s->effect[1].pc = 0x22325u;
         s->effect[2].pc = 0x2049bu;
@@ -366,7 +365,6 @@ int PbrbSynthPlaySfxModified(PbrbSynth* s, int effect, unsigned frequency, unsig
         if (!HeaderInTable(s, bank, location.header, 1))return 0;
     }
     else if (!RawLocation(s, effect, 1, &location))return 0;
-    if (!s->effectsOn)return 1;
     if (!BeginSfx(s, location.bank, location.header))return 0;
     s->cryFrequency = (unsigned char)frequency; s->cryTempo = (unsigned char)tempo;
     return 1;
@@ -376,13 +374,14 @@ int PbrbSynthPlayCry(PbrbSynth* s, unsigned species) {
     if (!s || species < 1 || species > 190)return 0;
     at = CRY_DATA + (species - 1u) * 3u;
     if (!Within(s, at, 3) || s->rom[at] >= 38u)return 0;
-    if (!s->effectsOn)return 1;
     bank = s->musicBank ? s->musicBank : WORLD_BANK;
     id = 20u + (unsigned)s->rom[at] * 3u;
     if (!BeginSfx(s, bank, bank + id * 3u))return 0;
     s->cryFrequency = s->rom[at + 1]; s->cryTempo = s->rom[at + 2];
     return 1;
 }
+/* User mutes act at the mixer only. Original sound commands, shared-channel
+   ownership and WaitForSound durations must advance identically in silence. */
 void PbrbSynthSetMusicEnabled(PbrbSynth* s, int enabled) { if (s)s->musicOn = enabled != 0; }
 void PbrbSynthSetEffectsEnabled(PbrbSynth* s, int enabled) { if (s)s->effectsOn = enabled != 0; }
 void PbrbSynthSetLowHealth(PbrbSynth* s, int enabled) {
@@ -394,7 +393,7 @@ void PbrbSynthSetLowHealth(PbrbSynth* s, int enabled) {
     else if (s->lowHealthAlarm & 0x80u)s->lowHealthAlarm = 0xffu;
 }
 int PbrbSynthEffectsBusy(const PbrbSynth* s) {
-    if (!s || !s->effectsOn)return 0;
+    if (!s)return 0;
     /* home/delay.asm: WaitForSoundToFinish returns immediately while the
        repeating alarm owns CHAN5. It must never block gameplay forever. */
     if (s->lowHealthAlarm & 0x80u)return 0;
@@ -405,14 +404,14 @@ int PbrbSynthEffectsBusy(const PbrbSynth* s) {
     return 0;
 }
 int PbrbSynthMusicBusy(const PbrbSynth* s) {
-    if (!s || !s->songValid || !s->musicOn)return 0;
+    if (!s || !s->songValid)return 0;
     for (unsigned i = 0; i < 4; ++i)if (s->song[i].enabled)return 1;
     return 0;
 }
 void PbrbSynthUi(PbrbSynth* s, int which) {
     static const unsigned char ids[9] = { 144,143,185,186,187,188,184,189,194 };
     unsigned channel;
-    if (!s || !s->effectsOn || which < 0 || which > 8 || !s->menuLength[which])return;
+    if (!s || which < 0 || which > 8 || !s->menuLength[which])return;
     channel = (which == 0 || which == 2 || which == 3 || which == 8) ? 0u : 3u;
     unsigned char fraction = s->effect[channel].fraction, octave = s->effect[channel].octave;
     ResetVoice(&s->effect[channel], channel);
@@ -658,7 +657,7 @@ static void Fetch(PbrbSynth* s, PbrbVoice* v, int effect) {
             if (!Byte(s, v, &a))break;
             Duration(s, v, (op & 15u) + 1u, 0);
             v->lastNote = (unsigned char)a; ++v->noteSerial;
-            if (s->musicOn)StartDrum(s, v->bank, a);
+            StartDrum(s, v->bank, a);
             return;
         }
         if ((!effect || v->executeMusic) && op <= 0xcfu) {

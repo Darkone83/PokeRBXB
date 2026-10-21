@@ -19,6 +19,7 @@ static LPDIRECTSOUNDBUFFER s_buffer = NULL;
 static HANDLE s_thread = NULL, s_event = NULL;
 static CRITICAL_SECTION s_lock;
 static int s_lockValid = 0, s_ready = 0;
+static int s_outputVolume = 10, s_outputPaused = 0;
 static DWORD s_nextChunk = 0;
 static volatile DWORD s_lastRenderTick = 0;
 static PbrbSynth s_synth;
@@ -80,7 +81,14 @@ static void FillChunk(void* ptr, DWORD bytes) {
     unsigned frames = (unsigned)bytes / 4u;
     while (frames) {
         unsigned n = frames > PBRB_FRAMES_PER_CHUNK ? PBRB_FRAMES_PER_CHUNK : frames;
-        PbrbSynthRender(&s_synth, s_stereo, (int)n);
+        /* A platform pause freezes both sequencer and oscillator state.
+           Muting/volume, in contrast, never changes game sound-wait timing. */
+        if (s_outputPaused)memset(s_stereo, 0, n * 4u);
+        else {
+            PbrbSynthRender(&s_synth, s_stereo, (int)n);
+            if (s_outputVolume < 10)for (unsigned i = 0; i < n * 2u; ++i)
+                s_stereo[i] = (short)((int)s_stereo[i] * s_outputVolume / 10);
+        }
         s_lastRenderTick = GetTickCount();
         memcpy(dst, s_stereo, n * 4u);
         dst += n * 2u; frames -= n;
@@ -123,6 +131,7 @@ int PbrbAudioInit() {
     HRESULT hr;
     if (s_ready)return 1;
     PbrbSynthInit(&s_synth, PBRB_AUDIO_RATE);
+    s_outputVolume = 10; s_outputPaused = 0;
     InitializeCriticalSection(&s_lock); s_lockValid = 1;
     hr = DirectSoundCreate(NULL, &s_ds, NULL);
     if (FAILED(hr) || !s_ds) { PbrbAudioShutdown(); return 0; }
@@ -193,6 +202,25 @@ void PbrbAudioStopLauncherMusic() {
     ReleaseLauncherMusic();
     if (s_lockValid)LeaveCriticalSection(&s_lock);
 }
+/* The caller holds the audio lock. Reuse the one owned ROM on skips. */
+static int StartLauncherTrack(unsigned seed) {
+    if (!s_launcherRom)return 0;
+    const unsigned count = sizeof(kLauncherTracks) / sizeof(kLauncherTracks[0]);
+    const unsigned choices = count - (s_lastLauncherTrack >= 0 ? 1u : 0u);
+    const unsigned limit = ~0u - (~0u % choices);
+    unsigned value;
+    do { value = PbrbRandomNext(&seed); } while (value > limit);
+    unsigned track = (value - 1u) % choices;
+    if (s_lastLauncherTrack >= 0 && track >= (unsigned)s_lastLauncherTrack)++track;
+    /* A different theme starts from clean voice state; output preferences
+       are retained, including a muted but logically active soundtrack. */
+    PbrbSynthStopTitle(&s_synth);
+    const int ok = PbrbSynthAttachIntro(&s_synth, s_launcherRom, 1048576u) &&
+        PbrbSynthPlayMusic(&s_synth, kLauncherTracks[track].music);
+    if (ok) { s_launcherTrack = (int)track; s_lastLauncherTrack = (int)track; }
+    else ReleaseLauncherMusic();
+    return ok;
+}
 int PbrbAudioStartLauncherMusic(const char* path, unsigned seed) {
     PbrbAudioStopLauncherMusic();
     if (!s_ready || !path || !s_thread || WaitForSingleObject(s_thread, 0) != WAIT_TIMEOUT ||
@@ -211,22 +239,18 @@ int PbrbAudioStartLauncherMusic(const char* path, unsigned seed) {
         xpd_close(&archive);
     }
     if (!valid) { if (content)free(content); return 0; }
-    const unsigned count = sizeof(kLauncherTracks) / sizeof(kLauncherTracks[0]);
-    const unsigned choices = count - (s_lastLauncherTrack >= 0 ? 1u : 0u);
-    const unsigned limit = ~0u - (~0u % choices);
-    unsigned value;
-    do { value = PbrbRandomNext(&seed); } while (value > limit);
-    unsigned track = (value - 1u) % choices;
-    if (s_lastLauncherTrack >= 0 && track >= (unsigned)s_lastLauncherTrack)++track;
     if (s_lockValid)EnterCriticalSection(&s_lock);
     s_launcherRom = (unsigned char*)content;
-    /* Start from clean channel state so a previous game's octave, fade or
-       low-health alarm cannot leak into the menu theme. */
-    PbrbSynthStopTitle(&s_synth);
-    int ok = PbrbSynthAttachIntro(&s_synth, s_launcherRom, bytes) &&
-        PbrbSynthPlayMusic(&s_synth, kLauncherTracks[track].music);
-    if (ok) { s_launcherTrack = (int)track; s_lastLauncherTrack = (int)track; }
-    else ReleaseLauncherMusic();
+    const int ok = StartLauncherTrack(seed);
+    if (s_lockValid)LeaveCriticalSection(&s_lock);
+    return ok;
+}
+int PbrbAudioNextLauncherMusic() {
+    if (!s_ready || !s_thread || WaitForSingleObject(s_thread, 0) != WAIT_TIMEOUT ||
+        (DWORD)(GetTickCount() - s_lastRenderTick) > 1000u)return 0;
+    if (s_lockValid)EnterCriticalSection(&s_lock);
+    const int ok = s_launcherTrack >= 0 && s_launcherRom && s_synth.rom == s_launcherRom ?
+        StartLauncherTrack((unsigned)GetTickCount()) : 0;
     if (s_lockValid)LeaveCriticalSection(&s_lock);
     return ok;
 }
@@ -235,7 +259,8 @@ const char* PbrbAudioLauncherTrackName() {
     if (!s_ready || !s_thread || WaitForSingleObject(s_thread, 0) != WAIT_TIMEOUT ||
         (DWORD)(GetTickCount() - s_lastRenderTick) > 1000u)return name;
     if (s_lockValid)EnterCriticalSection(&s_lock);
-    if (s_launcherTrack >= 0 && s_launcherRom && s_synth.rom == s_launcherRom &&
+    if (!s_outputPaused && s_outputVolume > 0 && s_synth.musicOn &&
+        s_launcherTrack >= 0 && s_launcherRom && s_synth.rom == s_launcherRom &&
         s_synth.musicId == kLauncherTracks[s_launcherTrack].music &&
         !s_synth.decodeErrors && PbrbSynthMusicBusy(&s_synth))
         name = kLauncherTracks[s_launcherTrack].name;
@@ -311,6 +336,18 @@ void PbrbAudioStopTitle() {
 void PbrbAudioPauseSequencer(unsigned frames) {
     if (s_lockValid)EnterCriticalSection(&s_lock);
     PbrbSynthPauseSequencer(&s_synth, frames);
+    if (s_lockValid)LeaveCriticalSection(&s_lock);
+}
+void PbrbAudioSetVolume(int volume) {
+    if (volume < 0)volume = 0;
+    if (volume > 10)volume = 10;
+    if (s_lockValid)EnterCriticalSection(&s_lock);
+    s_outputVolume = volume;
+    if (s_lockValid)LeaveCriticalSection(&s_lock);
+}
+void PbrbAudioSetPaused(int paused) {
+    if (s_lockValid)EnterCriticalSection(&s_lock);
+    s_outputPaused = paused != 0;
     if (s_lockValid)LeaveCriticalSection(&s_lock);
 }
 void PbrbAudioSetLowHealth(int enabled) {

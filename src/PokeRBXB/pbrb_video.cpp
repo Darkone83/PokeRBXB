@@ -10,6 +10,7 @@ static PbrbRect g_game_rect = { 0, 0, 640, 480 };
 static float g_canvas_w = 1672.0f, g_canvas_h = 941.0f;
 static float g_scale = 1.0f, g_off_x = 0.0f, g_off_y = 0.0f;
 static int g_smooth_game = 0;
+static int g_screen_percent = 100, g_screen_horizontal = 0, g_screen_vertical = 0;
 struct V { float x, y, z, rhw; DWORD c; float u, v; };
 #define PBRB_FVF (D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1)
 
@@ -115,6 +116,15 @@ void PbrbEnd() { g_dev->EndScene(); g_dev->Present(NULL, NULL, NULL, NULL); }
 
 static void DrawVerts(V* v, int primitives, IDirect3DTexture8* tex, int pointFilter = 0) {
     if (!g_dev)return;
+    if (g_screen_percent != 100 || g_screen_horizontal || g_screen_vertical) {
+        const float scale = (float)g_screen_percent / 100.0f;
+        const float x = g_sw * ((1.0f - scale) * 0.5f + g_screen_horizontal / 100.0f);
+        const float y = g_sh * ((1.0f - scale) * 0.5f + g_screen_vertical / 100.0f);
+        for (int i = 0; i < primitives * 3; ++i) {
+            v[i].x = v[i].x * scale + x;
+            v[i].y = v[i].y * scale + y;
+        }
+    }
     g_dev->SetRenderState(D3DRS_ZENABLE, FALSE);
     g_dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
     g_dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
@@ -176,6 +186,11 @@ void PbrbSpritePoint(PbrbTexture* t, float x, float y, float w, float h, DWORD t
     DrawVerts(v, 2, t->gpu, 1);
 }
 
+void PbrbSetScreenCalibration(int percent, int horizontal, int vertical) {
+    g_screen_percent = percent < 80 ? 80 : percent > 100 ? 100 : percent;
+    g_screen_horizontal = horizontal < -5 ? -5 : horizontal > 5 ? 5 : horizontal;
+    g_screen_vertical = vertical < -5 ? -5 : vertical > 5 ? 5 : vertical;
+}
 void PbrbSetSmoothFiltering(int smooth) { g_smooth_game = smooth != 0; }
 void PbrbSpriteGame(PbrbTexture* t, float x, float y, float w, float h, DWORD tint) {
     V v[6]; if (!t || !t->gpu)return;

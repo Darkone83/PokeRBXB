@@ -964,11 +964,38 @@ static unsigned PplayMenuKeys(PbrbPlay* p, unsigned held, unsigned pressed) {
     if (p->repeatFrames >= 24u && (p->repeatFrames - 24u) % 6u == 0)pressed |= directions;
     return pressed;
 }
+/* The platform exit shortcut must not checkpoint a pending item/evolution,
+   dialogue or service. The ordinary overworld/start/options states can use
+   the same stable-world serializer as the original SAVE menu. */
+static int PplayCanSaveAndExit(const PbrbPlay* p) {
+    if (!PbrbPlayCanSave(p) || p->savePending || p->endingPending ||
+        p->text.active || p->text.visible || p->worldSoundPhase)return 0;
+    const int overlay = p->overlay == PBRB_OVERLAY_EXIT ? p->exitReturn : p->overlay;
+    return overlay == PBRB_OVERLAY_NONE || overlay == PBRB_OVERLAY_START ||
+        overlay == PBRB_OVERLAY_OPTIONS;
+}
 void PbrbPlayRequestExit(PbrbPlay* p) {
     if (!p || p->overlay == PBRB_OVERLAY_EXIT)return;
+    p->exitCanSave = PplayCanSaveAndExit(p); p->exitSaveFailed = 0;
     p->exitReturn = p->overlay; p->exitSelection = p->selection;
-    p->overlay = PBRB_OVERLAY_EXIT; p->selection = 1;
+    p->overlay = PBRB_OVERLAY_EXIT; p->selection = 2;
     PbrbInputStopRumble();
+}
+static void PplayCancelExit(PbrbPlay* p) {
+    p->overlay = p->exitReturn; p->selection = p->exitSelection;
+    p->exitCanSave = p->exitSaveFailed = 0;
+}
+static void PplaySaveAndExit(PbrbPlay* p) {
+    static unsigned char buffer[PBRB_PLAY_SAVE_MAX];
+    /* Recheck eligibility before writing. A failed write leaves the complete
+       live scene and its previous overlay available to Retry or Cancel. */
+    if (!p->exitCanSave || !PplayCanSaveAndExit(p)) { p->exitCanSave = 0; p->selection = 2; return; }
+    const size_t bytes = PbrbPlaySerialize(p, buffer, sizeof(buffer));
+    if (!bytes || !PbrbSaveGame(p->game, buffer, (unsigned)bytes)) {
+        p->exitSaveFailed = 1; return;
+    }
+    /* PbrbSaveGame returns success only after flush and readback validation. */
+    p->hadSave = 1; p->exitSaveFailed = 0; p->exitRequested = 1;
 }
 static void PplayClosePC(PbrbPlay* p) {
     p->overlay = PBRB_OVERLAY_NONE; p->text.visible = 0;
@@ -1005,11 +1032,14 @@ void PbrbPlayTick(PbrbPlay* p, unsigned held, unsigned pressed) {
     }
     unsigned keys = PplayMenuKeys(p, held, pressed);
     if (p->overlay == PBRB_OVERLAY_EXIT) {
-        if (keys & (PBRB_PAD_UP | PBRB_PAD_DOWN))p->selection ^= 1;
-        if (keys & PBRB_PAD_B) { p->overlay = p->exitReturn; p->selection = p->exitSelection; }
+        const int first = p->exitCanSave ? 0 : 1, count = 3 - first;
+        if (keys & PBRB_PAD_UP)p->selection = first + (p->selection - first + count - 1) % count;
+        else if (keys & PBRB_PAD_DOWN)p->selection = first + (p->selection - first + 1) % count;
+        if (keys & PBRB_PAD_B)PplayCancelExit(p);
         else if (keys & PBRB_PAD_A) {
-            if (!p->selection)p->exitRequested = 1;
-            else { p->overlay = p->exitReturn; p->selection = p->exitSelection; }
+            if (p->selection == 0)PplaySaveAndExit(p);
+            else if (p->selection == 1)p->exitRequested = 1;
+            else PplayCancelExit(p);
         }
         return;
     }
@@ -1425,9 +1455,15 @@ void PbrbPlayRender(PbrbPlay* p) {
         PbrbGbGlyph(g, 0xed, x + 8, 64 + p->selection * 16);
     }
     if (p->overlay == PBRB_OVERLAY_EXIT) {
-        PbrbGbSetPalettes(g, 0xe4, 0xd0, 0xe4); PbrbGbTextBox(g, 0, 32, 20, 12);
-        PbrbGbString(g, "Return to launcher", 8, 48); PbrbGbString(g, "without saving?", 8, 64);
-        PbrbGbString(g, "YES", 24, 88); PbrbGbString(g, "NO", 24, 104); PbrbGbGlyph(g, 0xed, 8, 88 + p->selection * 16);
+        PbrbGbSetPalettes(g, 0xe4, 0xd0, 0xe4); PbrbGbTextBox(g, 0, 8, 20, 16);
+        PbrbGbString(g, "Return to launcher", 8, 16);
+        if (p->exitSaveFailed) {
+            PbrbGbString(g, "Save failed.", 8, 32); PbrbGbString(g, "Retry or cancel.", 8, 48);
+        }
+        else PbrbGbString(g, p->exitCanSave ? "Save before exit?" : "Cannot save here.", 8, 40);
+        PbrbGbString(g, p->exitCanSave ? "Save and return" : "Save unavailable", 24, 64);
+        PbrbGbString(g, "Without saving", 24, 88); PbrbGbString(g, "Cancel", 24, 112);
+        PbrbGbGlyph(g, 0xed, 8, 64 + p->selection * 24);
     }
 }
 

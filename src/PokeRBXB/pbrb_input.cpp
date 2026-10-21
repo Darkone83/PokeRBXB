@@ -8,7 +8,7 @@ static DWORD g_last_x = 0, g_last_y = 0;
 static DWORD g_prev_keys = 0;
 static unsigned g_prev_held = 0;
 static int g_last_port = -1;
-static int g_rumble_enabled = 0;
+static int g_rumble_enabled = 0, g_rumble_level = 2, g_dpad_only = 0;
 
 /* Feedback must outlive XInputSetState: RXDK can finish it asynchronously.
    Each pad owns its own buffer; never clear or reuse a pending request. */
@@ -46,7 +46,17 @@ void PbrbInputStopRumble() {
     }
     PumpRumble();
 }
+void PbrbInputSetDpadOnly(int enabled) { g_dpad_only = enabled != 0; }
+void PbrbInputSetRumbleLevel(int level) {
+    if (level < 0)level = 0;
+    if (level > 2)level = 2;
+    /* Do not continue an earlier pulse at the previous preference's level. */
+    if ((g_rumble_enabled ? g_rumble_level : 0) != level)PbrbInputStopRumble();
+    g_rumble_enabled = level != 0;
+    g_rumble_level = level == 1 ? 1 : 2;
+}
 void PbrbInputSetRumbleEnabled(int enabled) {
+    g_rumble_level = 2;
     g_rumble_enabled = enabled != 0;
     if (!g_rumble_enabled)PbrbInputStopRumble();
 }
@@ -56,6 +66,7 @@ void PbrbInputRumble(unsigned left, unsigned right, unsigned milliseconds) {
     const int p = g_last_port;
     g_motor_left[p] = left < 65536u ? left : 65535u;
     g_motor_right[p] = right < 65536u ? right : 65535u;
+    if (g_rumble_level == 1) { g_motor_left[p] /= 2u; g_motor_right[p] /= 2u; }
     /* Bounded pulses cannot leave a motor running if a caller supplies a
        corrupt duration. The regular input poll stops an expired pulse. */
     g_rumble_duration[p] = milliseconds < 1000u ? milliseconds : 1000u;
@@ -75,6 +86,7 @@ void PbrbInputInit() {
     memset(g_rumble_duration, 0, sizeof(g_rumble_duration));
     g_prev_x = g_prev_y = 0; g_prev_keys = g_prev_held = 0;
     g_last_x = g_last_y = 0; g_last_port = -1; g_rumble_enabled = 0;
+    g_rumble_level = 2; g_dpad_only = 0;
 }
 void PbrbInputShutdown() {
     PbrbInputStopRumble();
@@ -104,7 +116,10 @@ PbrbEvents PbrbInputPoll() {
         }
         if (port < 0 && g_pads[i])port = i;
     }
+    /* An inserted pad in a lower port must not steal the active controller. */
+    if (g_last_port >= 0 && g_pads[g_last_port])port = g_last_port;
     if (port != g_last_port) {
+        e.controllerChanged = g_last_port >= 0;
         PbrbInputStopRumble();
         e.released = g_prev_held;
         g_prev_keys = g_prev_held = 0; g_prev_x = g_prev_y = 0;
@@ -119,6 +134,7 @@ PbrbEvents PbrbInputPoll() {
         PbrbInputStopRumble();
         return e;
     }
+    e.connected = 1;
     const DWORD b = st.Gamepad.wButtons;
     const BYTE* a = st.Gamepad.bAnalogButtons;
     DWORD keys = 0;
@@ -126,15 +142,17 @@ PbrbEvents PbrbInputPoll() {
     if (a[XINPUT_GAMEPAD_B] > 30 || (b & 0x2000))keys |= 2;
     if (a[XINPUT_GAMEPAD_X] > 30 || (b & 0x4000))keys |= 4;
     if (b & XINPUT_GAMEPAD_START)keys |= 8;
+    if (a[XINPUT_GAMEPAD_Y] > 30 || (b & 0x8000))keys |= 16;
     e.accept = ((keys & 1) && !(g_prev_keys & 1)) || ((keys & 8) && !(g_prev_keys & 8));
     e.exit = (keys & 2) && !(g_prev_keys & 2);
     e.rescan = (keys & 4) && !(g_prev_keys & 4);
+    e.nextSong = (keys & 16) && !(g_prev_keys & 16);
     g_prev_keys = keys;
     int dirx = 0, diry = 0;
-    if ((b & XINPUT_GAMEPAD_DPAD_LEFT) || st.Gamepad.sThumbLX < -16000)dirx = -1;
-    else if ((b & XINPUT_GAMEPAD_DPAD_RIGHT) || st.Gamepad.sThumbLX > 16000)dirx = 1;
-    if ((b & XINPUT_GAMEPAD_DPAD_UP) || st.Gamepad.sThumbLY > 16000)diry = -1;
-    else if ((b & XINPUT_GAMEPAD_DPAD_DOWN) || st.Gamepad.sThumbLY < -16000)diry = 1;
+    if ((b & XINPUT_GAMEPAD_DPAD_LEFT) || (!g_dpad_only && st.Gamepad.sThumbLX < -16000))dirx = -1;
+    else if ((b & XINPUT_GAMEPAD_DPAD_RIGHT) || (!g_dpad_only && st.Gamepad.sThumbLX > 16000))dirx = 1;
+    if ((b & XINPUT_GAMEPAD_DPAD_UP) || (!g_dpad_only && st.Gamepad.sThumbLY > 16000))diry = -1;
+    else if ((b & XINPUT_GAMEPAD_DPAD_DOWN) || (!g_dpad_only && st.Gamepad.sThumbLY < -16000))diry = 1;
 
     /* Gameplay edges are independent of the launcher's time-based repeat.
        Start and Back remain distinct from A and B for the original menus. */

@@ -33,13 +33,15 @@ PbrbPackStatus PbrbInspectPack(const char* path, unsigned game) {
    root; Z: is utility/cache storage. XCreateSaveGame returns the container
    path, including its native metadata. Do not mount/format a utility drive,
    hardcode another title's ID, or nest a second UDATA directory under U:. */
-static PbrbPreferences s_preferences = { 0, 0, 0 };
+static const PbrbPreferences kDefaultPreferences = { 0, 0, 0, 1, 1, 1, 10, 0, 100, 0, 0 };
+static PbrbPreferences s_preferences = kDefaultPreferences;
 static char s_saveDir[MAX_PATH] = "";
 static const char* s_saveError = "";
 static const unsigned char kSaveMagic[8] = { 'P','B','R','B','S','A','V','E' };
 enum { SAVE_HEADER_BYTES = 32, SAVE_FORMAT = 1 };
 struct SaveRecord { unsigned generation, bytes, crc; };
 
+void PbrbDefaultPreferences(PbrbPreferences* p) { if (p)*p = kDefaultPreferences; }
 const PbrbPreferences* PbrbGetPreferences() { return &s_preferences; }
 const char* PbrbSaveError() { return s_saveError; }
 
@@ -58,6 +60,36 @@ static unsigned SaveCRC(unsigned c, const unsigned char* p, unsigned n) {
             c = (c >> 1) ^ (0xedb88320u & (0u - (c & 1u)));
     }
     return c;
+}
+enum { PREFERENCES_BYTES = 16, PREFERENCES_FORMAT = 1 };
+static int ValidPreferences(const PbrbPreferences* p) {
+    return p && p->smooth >= 0 && p->smooth <= 1 && p->rumble >= 0 && p->rumble <= 2 &&
+        p->color >= 0 && p->color <= 1 && p->launcherMusic >= 0 && p->launcherMusic <= 1 &&
+        p->music >= 0 && p->music <= 1 && p->effects >= 0 && p->effects <= 1 &&
+        p->volume >= 0 && p->volume <= 10 && p->dpadOnly >= 0 && p->dpadOnly <= 1 &&
+        p->screenScale >= 80 && p->screenScale <= 100 &&
+        p->screenX >= -5 && p->screenX <= 5 && p->screenY >= -5 && p->screenY <= 5;
+}
+/* -2 protects an unfamiliar format from being overwritten by this build.
+   The three-byte format is the original filtering/rumble/color preference. */
+static int DecodePreferences(const unsigned char* data, unsigned bytes, PbrbPreferences* p) {
+    PbrbPreferences next = kDefaultPreferences;
+    if (bytes == 3u) {
+        if (data[0] > 1u || data[1] > 1u || data[2] > 1u)return -1;
+        next.smooth = data[0]; next.rumble = data[1] ? 2 : 0; next.color = data[2];
+    }
+    else {
+        if (bytes < 5u || memcmp(data, "PBOP", 4) || data[4] != PREFERENCES_FORMAT)return -2;
+        if (bytes != PREFERENCES_BYTES)return -1;
+        next.smooth = data[5]; next.rumble = data[6]; next.color = data[7];
+        next.launcherMusic = data[8]; next.music = data[9]; next.effects = data[10];
+        next.volume = data[11]; next.dpadOnly = data[12]; next.screenScale = data[13];
+        /* Biased unsigned bytes avoid compiler-dependent signed-char decoding. */
+        next.screenX = (int)data[14] - 5; next.screenY = (int)data[15] - 5;
+        if (!ValidPreferences(&next))return -1;
+    }
+    if (p)*p = next;
+    return 1;
 }
 static int SaveDirectory(int create) {
     if (s_saveDir[0]) {
@@ -110,7 +142,8 @@ static int ReadSaveRecord(const char* path, unsigned kind, SaveRecord* record,
         const DWORD e = GetLastError();
         return (e == ERROR_FILE_NOT_FOUND || e == ERROR_PATH_NOT_FOUND) ? 0 : -1;
     }
-    unsigned char header[SAVE_HEADER_BYTES], block[1024];
+    unsigned char header[SAVE_HEADER_BYTES], block[1024], prefix[PREFERENCES_BYTES];
+    memset(prefix, 0, sizeof(prefix));
     DWORD got = 0;
     const DWORD size = GetFileSize(file, NULL);
     int ok = ReadFile(file, header, sizeof(header), &got, NULL) && got == sizeof(header);
@@ -137,12 +170,14 @@ static int ReadSaveRecord(const char* path, unsigned kind, SaveRecord* record,
         ok = ReadFile(file, block, count, &got, NULL) && got == count;
         if (ok) {
             crc = SaveCRC(crc, block, count);
+            if (!done)memcpy(prefix, block, count < sizeof(prefix) ? count : sizeof(prefix));
             if (output)memcpy((unsigned char*)output + done, block, count);
             done += count;
         }
     }
     CloseHandle(file);
     if (!ok || ~crc != record->crc)return -1;
+    if (!kind)return DecodePreferences(prefix, record->bytes, NULL);
     return 1;
 }
 static int NewerGeneration(unsigned a, unsigned b) {
@@ -248,21 +283,25 @@ static int WriteSaveRecord(unsigned kind, const void* data, unsigned bytes) {
     return 1;
 }
 int PbrbLoadPreferences() {
-    unsigned char data[3]; unsigned bytes = 0;
-    s_preferences.smooth = s_preferences.rumble = s_preferences.color = 0;
+    unsigned char data[PREFERENCES_BYTES]; unsigned bytes = 0;
+    PbrbDefaultPreferences(&s_preferences);
     if (!LoadSaveRecord(0, data, sizeof(data), &bytes))return 0;
-    if (bytes != sizeof(data) || data[0] > 1u || data[1] > 1u || data[2] > 1u) {
+    if (DecodePreferences(data, bytes, &s_preferences) != 1) {
         s_saveError = "The saved options are invalid."; return 0;
     }
-    s_preferences.smooth = data[0]; s_preferences.rumble = data[1]; s_preferences.color = data[2];
     return 1;
 }
 int PbrbSavePreferences(const PbrbPreferences* p) {
-    if (!p) { s_saveError = "No options were supplied."; return 0; }
-    unsigned char data[3];
-    data[0] = (unsigned char)(p->smooth != 0); data[1] = (unsigned char)(p->rumble != 0);
-    data[2] = (unsigned char)(p->color != 0);
-    s_preferences.smooth = data[0]; s_preferences.rumble = data[1]; s_preferences.color = data[2];
+    if (!ValidPreferences(p)) { s_saveError = "The selected options are invalid."; return 0; }
+    unsigned char data[PREFERENCES_BYTES];
+    memcpy(data, "PBOP", 4); data[4] = PREFERENCES_FORMAT;
+    data[5] = (unsigned char)p->smooth; data[6] = (unsigned char)p->rumble;
+    data[7] = (unsigned char)p->color; data[8] = (unsigned char)p->launcherMusic;
+    data[9] = (unsigned char)p->music; data[10] = (unsigned char)p->effects;
+    data[11] = (unsigned char)p->volume; data[12] = (unsigned char)p->dpadOnly;
+    data[13] = (unsigned char)p->screenScale;
+    data[14] = (unsigned char)(p->screenX + 5); data[15] = (unsigned char)(p->screenY + 5);
+    s_preferences = *p;
     return WriteSaveRecord(0, data, sizeof(data));
 }
 int PbrbSaveGame(unsigned game, const void* data, unsigned bytes) {
@@ -279,4 +318,209 @@ int PbrbLoadGame(unsigned game, void* data, unsigned capacity, unsigned* bytes) 
 int PbrbHasSave(unsigned game) {
     if (game != 1u && game != 2u)return 0;
     return LoadSaveRecord(game, NULL, 0, NULL);
+}
+
+/* Read the documented native payload layout, never a live gameplay object.
+   This bounded preview checks framing and displayed fields without a ROM;
+   CONTINUE remains responsible for ROM-specific Pokemon/map validation. */
+struct SummaryReader { const unsigned char* data; unsigned bytes, at; int ok; };
+static unsigned SummaryGet(SummaryReader* r, unsigned bytes) {
+    if (!r->ok || bytes > r->bytes - r->at) { r->ok = 0; return 0; }
+    unsigned v = 0;
+    for (unsigned i = 0; i < bytes; ++i)v |= (unsigned)r->data[r->at++] << (i * 8u);
+    return v;
+}
+static void SummarySkip(SummaryReader* r, unsigned bytes) {
+    if (!r->ok || bytes > r->bytes - r->at)r->ok = 0;
+    else r->at += bytes;
+}
+static unsigned SummaryName(SummaryReader* r, unsigned limit, char* output) {
+    unsigned used = 0, letters = 0; int ended = 0;
+    for (unsigned i = 0; i < 11u; ++i) {
+        unsigned c = SummaryGet(r, 1);
+        if (c == 0x50u) { ended = 1; continue; }
+        if (ended || i >= limit || c < 0x60u) { r->ok = 0; continue; }
+        ++letters;
+        if (!output)continue;
+        char a = '?', b = 0;
+        if (c >= 0x80u && c <= 0x99u)a = (char)('A' + c - 0x80u);
+        else if (c >= 0xa0u && c <= 0xb9u)a = (char)('a' + c - 0xa0u);
+        else if (c >= 0xf6u)a = (char)('0' + c - 0xf6u);
+        else if (c >= 0x9au && c <= 0x9fu)a = "():;[]"[c - 0x9au];
+        else switch (c) {
+        case 0x7f: a = ' '; break;
+        case 0xba: a = 'e'; break;
+        case 0x70: case 0x71: case 0xe0: a = '\''; break;
+        case 0x72: case 0x73: a = '"'; break;
+        case 0xbb: case 0xbc: case 0xbd: case 0xbe: case 0xbf:
+            a = '\''; b = "dlstv"[c - 0xbbu]; break;
+        case 0xe1: a = 'P'; b = 'K'; break;
+        case 0xe2: a = 'M'; b = 'N'; break;
+        case 0xe3: a = '-'; break;
+        case 0xe4: a = '\''; b = 'r'; break;
+        case 0xe5: a = '\''; b = 'm'; break;
+        case 0xe6: a = '?'; break;
+        case 0xe7: a = '!'; break;
+        case 0xe8: case 0xf2: a = '.'; break;
+            /* The launcher font is ASCII; use readable forms for name symbols. */
+        case 0xef: a = 'M'; break;
+        case 0xf0: a = '$'; break;
+        case 0xf1: a = 'x'; break;
+        case 0xf3: a = '/'; break;
+        case 0xf4: a = ','; break;
+        case 0xf5: a = 'F'; break;
+        }
+        if (used < 15u)output[used++] = a;
+        if (b && used < 15u)output[used++] = b;
+    }
+    if (!ended)r->ok = 0;
+    if (output)output[used] = 0;
+    return letters;
+}
+static void SummaryMons(SummaryReader* r, unsigned count) {
+    /* PGM1/PGM2 write 62 bytes per monster; no compiler struct layout. */
+    for (unsigned i = 0; i < count; ++i) {
+        unsigned species = SummaryGet(r, 1), level = SummaryGet(r, 1), status = SummaryGet(r, 1);
+        if (!species || species > 190u || !level || level > 100u || status > 127u)r->ok = 0;
+        SummarySkip(r, 59);
+    }
+}
+static void SummaryItems(SummaryReader* r, unsigned maximum) {
+    unsigned count = SummaryGet(r, 1);
+    if (count > maximum) { r->ok = 0; return; }
+    for (unsigned i = 0; i < count; ++i) {
+        unsigned item = SummaryGet(r, 1), quantity = SummaryGet(r, 1);
+        if (!item || !quantity || quantity > 99u)r->ok = 0;
+    }
+}
+static int SummaryGame(const unsigned char* data, unsigned bytes, unsigned money, unsigned* badges) {
+    SummaryReader r = { data, bytes, 0, 1 };
+    unsigned format = SummaryGet(&r, 4);
+    if (format != 0x314d4750u && format != 0x324d4750u)return 0;
+    unsigned party = SummaryGet(&r, 1), box = SummaryGet(&r, 1), active = SummaryGet(&r, 1);
+    if (party > 6u || box >= 12u || active > 5u || (party && active >= party))return 0;
+    SummaryMons(&r, party);
+    for (unsigned b = 0; b < 12u; ++b) {
+        unsigned count = SummaryGet(&r, 1);
+        if (count > 20u)return 0;
+        SummaryMons(&r, count);
+    }
+    SummaryItems(&r, 20); SummaryItems(&r, 50);
+    for (unsigned d = 0; d < 19u; ++d) {
+        unsigned seen = SummaryGet(&r, 1), owned = SummaryGet(&r, 1);
+        if ((owned & ~seen) || (d == 18u && ((seen | owned) & 128u)))r.ok = 0;
+    }
+    unsigned bits = SummaryGet(&r, 1), dex = SummaryGet(&r, 1), savedMoney = SummaryGet(&r, 3);
+    unsigned coins = SummaryGet(&r, 2), repel = SummaryGet(&r, 2);
+    SummarySkip(&r, 4);
+    unsigned balls = SummaryGet(&r, 1), safariSteps = SummaryGet(&r, 2), hall = SummaryGet(&r, 2);
+    unsigned bicycle = SummaryGet(&r, 1), surfing = SummaryGet(&r, 1);
+    SummarySkip(&r, 2);
+    if (dex > 1u || savedMoney != money || coins > 9999u || repel > 250u ||
+        balls > 30u || safariSteps > 500u || hall > 50u || bicycle > 1u || surfing > 1u)return 0;
+    if (format == 0x324d4750u) {
+        unsigned total = SummaryGet(&r, 1), daycare = SummaryGet(&r, 1);
+        if (total < hall || daycare > 1u)return 0;
+        if (daycare) {
+            unsigned level = SummaryGet(&r, 1);
+            if (!level || level > 100u)return 0;
+            SummarySkip(&r, 4); SummaryMons(&r, 1);
+        }
+        for (unsigned h = 0; h < hall; ++h) {
+            unsigned count = SummaryGet(&r, 1);
+            if (!count || count > 6u)return 0;
+            for (unsigned m = 0; m < count; ++m) {
+                unsigned species = SummaryGet(&r, 1), level = SummaryGet(&r, 1);
+                if (!species || species > 190u || !level || level > 100u)return 0;
+                SummaryName(&r, 10, NULL);
+            }
+        }
+    }
+    if (!r.ok || r.at != bytes)return 0;
+    *badges = 0;
+    for (unsigned i = 0; i < 8u; ++i)if (bits & (1u << i))++*badges;
+    return 1;
+}
+static int SummaryWorld(const unsigned char* data, unsigned bytes, unsigned game) {
+    if (bytes < 32u || bytes > 4096u ||
+        ReadLE32(data + bytes - 4u) != ~SaveCRC(0xffffffffu, data, bytes - 4u))return 0;
+    SummaryReader r = { data, bytes - 4u, 0, 1 };
+    if (SummaryGet(&r, 4) != 0x31574e50u)return 0;
+    unsigned version = SummaryGet(&r, 2), savedGame = SummaryGet(&r, 1), map = SummaryGet(&r, 1);
+    if (version < 1u || version > 3u || game != savedGame || (version == 1u && map > 4u))return 0;
+    if (SummaryGet(&r, 4) > 63u)return 0;
+    SummarySkip(&r, 10);
+    unsigned facing = SummaryGet(&r, 1), lock = SummaryGet(&r, 1);
+    SummarySkip(&r, 2);
+    unsigned actors = SummaryGet(&r, 1), reserved = SummaryGet(&r, 1);
+    if (facing > 3u || lock > 1u || actors > 16u || reserved)return 0;
+    /* PNW1 v2/v3: 320 event bytes, two 256-word object/trainer arrays,
+       23 field bytes, 32 story bytes, and v3's eight hidden-item bytes. */
+    if (version >= 2u)SummarySkip(&r, 320u + 1024u + 23u + 32u + (version == 3u ? 8u : 0u));
+    SummarySkip(&r, actors * 16u);
+    if (version >= 2u) {
+        unsigned changes = SummaryGet(&r, 1);
+        if (changes > 64u)return 0;
+        SummarySkip(&r, changes * 3u);
+    }
+    return r.ok && r.at == r.bytes;
+}
+static int DecodeSaveSummary(const unsigned char* data, unsigned bytes, unsigned game,
+    PbrbSaveSummary* out) {
+    if (bytes < 100u)return 0;
+    SummaryReader r = { data, bytes, 0, 1 };
+    if (SummaryGet(&r, 4) != 0x31544250u)return 0;
+    unsigned version = SummaryGet(&r, 2), savedGame = SummaryGet(&r, 1), reserved = SummaryGet(&r, 1);
+    if ((version != 1u && version != 2u) || savedGame != game || reserved)return 0;
+    unsigned frames = SummaryGet(&r, 4);
+    SummarySkip(&r, 6);
+    unsigned money = SummaryGet(&r, 4), speed = SummaryGet(&r, 1);
+    unsigned animation = SummaryGet(&r, 1), style = SummaryGet(&r, 1);
+    if (money > 999999u || speed > 2u || animation > 1u || style > 1u)return 0;
+    if (version == 1u) {
+        unsigned pc = SummaryGet(&r, 1), bag = SummaryGet(&r, 1);
+        if (pc > 1u || bag > 1u || pc + bag > 1u || money != 3000u)return 0;
+    }
+    PbrbSaveSummary next; memset(&next, 0, sizeof(next));
+    if (!SummaryName(&r, 7, next.trainer) || !SummaryName(&r, 7, NULL))return 0;
+    unsigned starter = 0;
+    if (version == 1u) {
+        starter = SummaryGet(&r, 1);
+        unsigned level = SummaryGet(&r, 1), status = SummaryGet(&r, 1);
+        SummarySkip(&r, 10); SummaryName(&r, 10, NULL);
+        unsigned hp = SummaryGet(&r, 2), maxHP = SummaryGet(&r, 2);
+        SummarySkip(&r, 8);
+        unsigned experience = SummaryGet(&r, 4);
+        SummarySkip(&r, 2);
+        if (starter) {
+            if ((starter != 0x99u && starter != 0xb0u && starter != 0xb1u) ||
+                level != 5u || status || hp > maxHP || maxHP < 15u || maxHP > 25u || experience != 135u)return 0;
+        }
+        else if (level || hp || maxHP)return 0;
+    }
+    else {
+        unsigned length = SummaryGet(&r, 2);
+        if (!r.ok || length > r.bytes - r.at || !SummaryGame(data + r.at, length, money, &next.badges))return 0;
+        SummarySkip(&r, length);
+    }
+    unsigned length = SummaryGet(&r, 2);
+    if (!r.ok || length != r.bytes - r.at || !SummaryWorld(data + r.at, length, game) ||
+        (version == 1u && data[r.at + 24u] != starter))return 0;
+    const unsigned cap = 255u * 60u * 60u * 60u;
+    if (frames > cap)frames = cap;
+    next.hours = frames / (60u * 60u * 60u); next.minutes = (frames / (60u * 60u)) % 60u;
+    *out = next; return 1;
+}
+int PbrbReadSaveSummary(unsigned game, PbrbSaveSummary* summary) {
+    if (summary)memset(summary, 0, sizeof(*summary));
+    if (!summary || (game != 1u && game != 2u)) {
+        s_saveError = "The save summary request is invalid."; return -1;
+    }
+    /* Static staging avoids a 64 KB allocation on the Xbox thread stack. */
+    static unsigned char data[PBRB_SAVE_MAX_BYTES]; unsigned bytes = 0;
+    if (!LoadSaveRecord(game, data, sizeof(data), &bytes))return s_saveError[0] ? -1 : 0;
+    if (!DecodeSaveSummary(data, bytes, game, summary)) {
+        s_saveError = "The saved adventure summary is unavailable."; return -1;
+    }
+    return 1;
 }

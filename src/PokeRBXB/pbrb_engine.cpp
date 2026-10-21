@@ -23,6 +23,7 @@ static PbrbTexture s_frame;
 static unsigned char* s_rom = 0;
 static unsigned s_game = 0;
 static int s_running = 0;
+static int s_paused = 0;
 static PbrbFlow s_flow;
 static unsigned char s_pixels[PBRB_GB_RGBA_BYTES];
 static DWORD s_lastMs = 0;
@@ -65,6 +66,7 @@ void PbrbEngineStop() {
     s_rom = 0; s_game = 0; s_running = 0; s_titlePrep = s_titleExit = s_titleWhite = 0;
     memset(&s_world, 0, sizeof(s_world)); memset(&s_gb, 0, sizeof(s_gb));
     memset(&s_play, 0, sizeof(s_play)); s_pressed = s_held = 0;
+    s_paused = 0; s_accumCycles = 0; s_lastMs = 0;
 }
 static int GameRomRevision(const unsigned char* data, unsigned game) {
     /* Native scenes use original ROM addresses. Reject other revisions as
@@ -108,6 +110,13 @@ int PbrbEngineStart(const char* xpdPath, unsigned game) {
     return ok;
 }
 int PbrbEngineIsRunning() { return s_running; }
+void PbrbEngineSetPaused(int paused) {
+    const int next = s_running && paused ? 1 : 0;
+    if (next == s_paused)return;
+    s_paused = next; s_lastMs = GetTickCount(); s_held = s_pressed = 0;
+    /* Keep the fractional frame already accumulated, but never accumulate
+       the time spent in the platform reconnect overlay. */
+}
 static void ChangeScreen(int previous) {
     if (s_flow.screen == PBRB_SCREEN_TITLE && previous != PBRB_SCREEN_TITLE) {
         PbrbTitleReset(&s_title); s_songStarted = 0;
@@ -230,6 +239,7 @@ static void ClockGame() {
 }
 int PbrbEngineHandle(const PbrbEvents* in) {
     if (!s_running || !in)return 0;
+    if (s_paused) { s_lastMs = GetTickCount(); s_held = s_pressed = 0; return 0; }
     s_held = in->held;
     if (s_flow.screen == PBRB_SCREEN_GAMEPLAY)s_pressed |= in->pressed;
     else s_pressed = 0;

@@ -12,11 +12,15 @@ struct PbrbEvents {
     /* Legacy launcher/menu events. rescan is now the X / Options edge. */
     int left, right, up, down, accept, rescan, exit;
     unsigned held, pressed, released;
+    /* Launcher/platform state; never mapped into original Game Boy keys. */
+    int connected, controllerChanged, nextSong;
 };
 void PbrbInputInit();
 void PbrbInputShutdown();
 PbrbEvents PbrbInputPoll();
-void PbrbInputSetRumbleEnabled(int enabled);
+void PbrbInputSetRumbleEnabled(int enabled); /* compatibility: Off / Normal */
+void PbrbInputSetRumbleLevel(int level); /* 0 Off, 1 Low, 2 Normal */
+void PbrbInputSetDpadOnly(int enabled);
 void PbrbInputRumble(unsigned leftMotor, unsigned rightMotor, unsigned milliseconds);
 void PbrbInputStopRumble();
 

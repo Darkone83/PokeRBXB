@@ -17,6 +17,8 @@ int PbrbAudioLoadUiPack(const char* xpdPath);
    theme is chosen on each visit, avoiding the previous successful selection.
    The name is empty when music/output is inactive; no new media is needed. */
 int PbrbAudioStartLauncherMusic(const char* xpdPath, unsigned seed);
+/* Uses the already attached ROM; a muted song can still be selected. */
+int PbrbAudioNextLauncherMusic();
 const char* PbrbAudioLauncherTrackName();
 void PbrbAudioStopLauncherMusic();
 int PbrbAudioStartTitle(const unsigned char* rom, size_t bytes);
@@ -31,6 +33,11 @@ int PbrbAudioPlaySfxModified(int effect, unsigned frequencyModifier,
 void PbrbAudioStopTitle();
 /* LCD-off intervals stop VBlank sequencing, but not the hardware audio. */
 void PbrbAudioPauseSequencer(unsigned frames);
+/* Global output preferences are controlled by the launcher. Mutes and
+   master volume (0..10) keep sequencing and sound-wait durations intact. */
+void PbrbAudioSetVolume(int volume);
+/* Reconnect pause freezes the synth; rendering continues as silence. */
+void PbrbAudioSetPaused(int paused);
 void PbrbAudioSetMusic(int enabled);
 void PbrbAudioSetEffects(int enabled);
 void PbrbAudioSetLowHealth(int enabled);
