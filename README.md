@@ -8,7 +8,7 @@
 
 **Pokémon Red and Blue for the Original Xbox.**
 
-PokeRBXB is a native Original Xbox implementation of Pokémon Red and Blue by [Darkone83](https://github.com/Darkone83). It brings both versions together in one launcher, with Xbox controller support, native saves, and optional display and rumble settings.
+PokeRBXB is a native Original Xbox implementation of Pokémon Red and Blue by [Darkone83](https://github.com/Darkone83). It brings both versions together in one launcher with Xbox controller support, native saves, a game soundtrack player, and shared display, audio, and controller settings.
 
 The goal is to preserve the original games' gameplay, graphics, music, and presentation while making them comfortable to play on an Xbox.
 
@@ -23,9 +23,13 @@ The goal is to preserve the original games' gameplay, graphics, music, and prese
 - Pokémon Red and Blue in one application, with separate progress for each version.
 - Native gameplay, battles, Pokémon catching, party management, PC storage, shops, and field moves.
 - Original graphics, music, and sound effects read from your own game data.
-- Native Xbox saves for game progress and launcher preferences.
-- Sharp or smooth pixel filtering and optional GBC palette coloring.
-- Optional controller rumble for battle hits, catches, tall grass, and selected field interactions.
+- Native Xbox saves for game progress and shared launcher preferences.
+- Saved-game details on the launcher, including trainer name, badges, and play time.
+- Randomly selected game music in the launcher, with a **Now Playing** song title and a control to skip tracks.
+- Sharp or smooth pixel filtering, original or GBC palette coloring, and screen size/position calibration.
+- Separate launcher music, game music, and sound-effect controls, plus master volume.
+- Adjustable controller rumble for battle hits, catches, tall grass, and selected field interactions.
+- Controller-disconnect pause and a safe **Save and Return** option.
 - Version-specific screen borders and automatic 480i, 480p, 720p, or PAL 576i output according to the console's video settings.
 
 ## Requirements
@@ -54,11 +58,11 @@ The files are arranged relative to the PokeRBXB installation folder:
 | `data/blue.xpd` | Your packed Pokémon Blue data, if installed |
 | `data/img/` | Supplied launcher artwork and borders |
 | `data/font/` | Supplied launcher font |
+| `data/xmv/intro.xmv` | Optional opening video, if installed |
 
 The packer creates its output beside the packer application. See the README supplied with XPD Packer for its startup instructions and supported ROM details.
 
 If a selected version's data is missing or invalid, PokeRBXB displays an error with the required filename. Copy the correct pack into the `data` folder beside `default.xbe`, then select **Retry**.
-
 ## Controls
 
 ### Launcher
@@ -68,41 +72,82 @@ If a selected version's data is missing or invalid, PokeRBXB displays an error w
 | D-pad or left stick, left/right | Select Red or Blue |
 | A | Start the selected game |
 | X | Open launcher options |
+| Y | Play another random launcher song |
 | B | Exit to the Xbox dashboard |
+
+The launcher selects game music at random and shows its name under **Now Playing**. The current song keeps playing while you browse the launcher. Use **Y** to change it without starting a game.
+
+### Launcher options
+
+| Control | Action |
+|---|---|
+| D-pad up/down | Choose an option or category |
+| D-pad left/right or A | Change the selected value, where applicable |
+| A | Open a settings category or controls guide |
+| B | Return to the previous page |
+
+From the main **Options** page, press **B** to save your shared preferences and return to game selection.
 
 ### In game
 
 | Control | Action |
 |---|---|
-| D-pad or left stick | Move and navigate menus |
+| D-pad (or left stick, when enabled) | Move and navigate menus |
 | A | Interact, confirm, or advance dialogue |
 | B | Cancel or go back |
 | Start | Open the game's menu |
 | Back | Game Boy SELECT; reorder items or battle moves where supported |
-| Back + Start | Open the confirmation to return to the launcher |
+| Back + Start | Open the return-to-launcher prompt |
 
-Returning to the launcher does **not** save your progress automatically. Use the in-game **SAVE** option first. At the game's title screen, **B** returns directly to the launcher.
+The **Back + Start** prompt provides **Save and Return**, **Return Without Saving**, and **Cancel**. **Save and Return** is available only when the game permits saving, such as during normal exploration. It is unavailable during battles and certain scripted events. If saving fails, the game stays open rather than exiting. Returning without saving discards progress made since your last successful save.
+
+At the game's title screen, **B** returns directly to the launcher.
+
+If the active controller disconnects during gameplay, the game and audio pause. Reconnect the controller, then press **A** to resume. Buttons held during reconnection are not passed into gameplay.
 
 ## Options
 
-Press **X** at the launcher to open these settings:
+Press **X** at the launcher to open the shared settings. They apply to both Red and Blue and are kept separate from the original game's **OPTION** menu.
 
-| Setting | Choices |
+### Display
+
+| Setting | Choices / behavior |
 |---|---|
 | Pixel Filtering | **Sharp** for crisp pixels, or **Smooth** for softened scaling |
-| Controller Rumble | **On** or **Off** |
 | Color Graphics | **Original** or **GBC Palette** |
+| Screen Calibration | Adjust screen size and horizontal/vertical position; reset to the default alignment |
 
-Use up/down to select a setting, then left/right or **A** to change it. Press **B** to save and return to the launcher. These preferences apply to both versions.
+Screen calibration helps compensate for displays that crop the edges. GBC Palette changes the coloring of the original graphics, not the game content.
 
-The game's own **OPTION** menu provides text speed, battle animation, and battle style settings. GBC Palette changes the coloring of the original graphics.
+### Audio
+
+| Setting | Choices / behavior |
+|---|---|
+| Launcher Music | **On** or **Off** |
+| Game Music | **On** or **Off** |
+| Sound Effects | **On** or **Off** |
+| Master Volume | Adjust overall audio level |
+
+Turning off game music or sound effects does not intentionally shorten gameplay animation or event timing.
+
+### Controller
+
+| Setting | Choices / behavior |
+|---|---|
+| Controller Rumble | **Off**, **Low**, or **Normal** |
+| Movement Input | **D-pad Only** or **D-pad + Stick** |
+
+The **Controls** page in the launcher shows the Xbox button layout, including Game Boy SELECT and the return-to-launcher shortcut.
+
+The game's own **OPTION** menu still provides **text speed**, **battle animation**, and **battle style** settings. These original gameplay choices remain in-game rather than being moved into the launcher.
 
 ## Save Data
 
-Use **Start → SAVE** during normal gameplay. Select **CONTINUE** from that version's main menu to resume a saved game.
+Use **Start → SAVE** during normal gameplay, or choose **Save and Return** from the **Back + Start** prompt when saving is available. Select **CONTINUE** from that version's main menu to resume a saved game.
 
 - Red and Blue keep separate game progress.
 - Game saves and launcher preferences are stored in the native **PokeRBXB** Xbox save container.
+- The launcher displays the saved trainer name, badge count, and play time for each available game; a version without a save shows **New Adventure**.
 - The generated `.xpd` files contain game data; they are not your save files.
 - Cartridge and emulator `.sav` import/export is not currently supported.
 
