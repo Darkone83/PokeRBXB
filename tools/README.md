@@ -14,13 +14,17 @@ The Python launcher installs the required PySide6 interface package automaticall
 
 ## Open the Packer
 
+### Windows
+
+Double click on **'start.bat'** 
+
+### Linux & Mac OS
+
 Run **`XPD_pack.py`**. If double-clicking it does not open the application, open a terminal in the packer folder and run:
 
 ```sh
 python XPD_pack.py
 ```
-
-If you are using a packaged application instead of the Python files, open that application directly.
 
 ## Build Your Packs
 
