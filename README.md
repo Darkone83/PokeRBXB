@@ -14,7 +14,7 @@ The goal is to preserve the original games' gameplay, graphics, music, and prese
 
 <div align=center>
 
-<img src="https://github.com/Darkone83/PokeRBXB/blob/main/img/launcher.png" width=325><img src="https://github.com/Darkone83/PokeRBXB/blob/main/img/game_red.jpg" width=325><img src="https://github.com/Darkone83/PokeRBXB/blob/main/img/game_blue.jpg" width=325>
+<img src="https://github.com/Darkone83/PokeRBXB/blob/main/img/launcher.png" width=375><img src="https://github.com/Darkone83/PokeRBXB/blob/main/img/game_red.jpg" width=375><img src="https://github.com/Darkone83/PokeRBXB/blob/main/img/game_blue.jpg" width=375>
 
 </div>
 
