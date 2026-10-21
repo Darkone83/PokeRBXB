@@ -1,10 +1,22 @@
 # PokeRBXB
 
+<div align=center>
+
+<img src="https://github.com/Darkone83/PokeRBXB/blob/main/img/logo.png" width=400><img src="https://github.com/Darkone83/PokeRBXB/blob/main/img/Darkone83.png" width=400>
+
+</div>
+
 **Pokémon Red and Blue for the Original Xbox.**
 
 PokeRBXB is a native Original Xbox implementation of Pokémon Red and Blue by [Darkone83](https://github.com/Darkone83). It brings both versions together in one launcher, with Xbox controller support, native saves, and optional display and rumble settings.
 
 The goal is to preserve the original games' gameplay, graphics, music, and presentation while making them comfortable to play on an Xbox.
+
+<div align=center>
+
+<img src="https://github.com/Darkone83/PokeRBXB/blob/main/img/launcher.png" width=325><img src="https://github.com/Darkone83/PokeRBXB/blob/main/img/game_red.jpg" width=325><img src="https://github.com/Darkone83/PokeRBXB/blob/main/img/game_blue.jpg" width=325>
+
+</div>
 
 ## Features
 
@@ -108,7 +120,7 @@ When reporting an issue in this repository, include the game version, build used
 
 ### PokeRBXB
 
-Original Xbox implementation and XPD Packer by **[Darkone83](https://github.com/Darkone83)** / **[Darkone Customs](https://www.darkonecustoms.com/)**.
+Original Xbox implementation and XPD Packer by **[Darkone83](https://github.com/Darkone83)**.
 
 ### pokered
 
