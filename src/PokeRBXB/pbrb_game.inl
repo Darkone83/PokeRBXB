@@ -1,5 +1,6 @@
 /* Included once by the native play translation unit. C++98, no CRT formatters. */
 #include "pbrb_game.h"
+#include "pbrb_rng.h"
 #include <string.h>
 enum PgameTable {
     PG_BASE, PG_MEW, PG_DEX, PG_EVOS, PG_MON_NAMES, PG_MOVE_NAMES,
@@ -11,7 +12,7 @@ static const unsigned char* PgameData(const PbrbGameRom* r, unsigned at, unsigne
     return r && r->data && at <= r->bytes && n <= r->bytes - at ? r->data + at : 0;
 }
 static unsigned PgameRandom(unsigned* seed) {
-    unsigned x = *seed; if (!x)x = 0x6d2b79f5u; x ^= x << 13; x ^= x >> 17; x ^= x << 5; *seed = x; return x;
+    return PbrbRandomNext(seed);
 }
 unsigned PbrbGameDex(const PbrbGameRom* r, unsigned species) {
     const unsigned char* d = species && species <= 190 ? PgameData(r, kPgameTables[PG_DEX] + species - 1u, 1) : 0;
@@ -122,7 +123,10 @@ int PbrbGameMakeMon(const PbrbGameRom* r, PbrbPlayMon* m, unsigned species, unsi
     unsigned* rng, unsigned ot, const unsigned char* trainerName, int trainer) {
     PbrbGameBase b; if (!m || !rng || !level || level > 100 || !PbrbGameBaseData(r, species, &b))return 0;
     memset(m, 0, sizeof(*m)); m->species = (unsigned char)species; m->level = (unsigned char)level; m->ot = ot & 65535u;
-    m->dvs[0] = (unsigned char)(trainer ? 0x98 : PgameRandom(rng) & 255u); m->dvs[1] = (unsigned char)(trainer ? 0x88 : PgameRandom(rng) & 255u);
+    /* AddPartyMon / LoadEnemyMonData keep the first draw in B, then store
+       the second draw (A) followed by B. Trainer DVs are fixed. */
+    if (trainer) { m->dvs[0] = 0x98; m->dvs[1] = 0x88; }
+    else { m->dvs[1] = (unsigned char)PgameRandom(rng); m->dvs[0] = (unsigned char)PgameRandom(rng); }
     memset(m->originalTrainer, 0x50, 11); if (trainerName)memcpy(m->originalTrainer, trainerName, 11);
     m->experience = PbrbGameExperience(r, species, level); memcpy(m->moves, b.moves, 4);
     unsigned at = PgameLearnset(r, species);

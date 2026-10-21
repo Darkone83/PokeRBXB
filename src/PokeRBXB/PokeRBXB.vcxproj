@@ -54,6 +54,7 @@
     <ClInclude Include="pbrb_packages.h" />
     <ClInclude Include="pbrb_play.h" />
     <ClInclude Include="pbrb_play_data.h" />
+    <ClInclude Include="pbrb_rng.h" />
     <ClInclude Include="pbrb_service_data.h" />
     <ClInclude Include="pbrb_stbi.h" />
     <ClInclude Include="pbrb_texture.h" />

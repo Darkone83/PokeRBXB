@@ -3,7 +3,11 @@
    and original text prompt completes. */
 static void PplayBattleSubmit(PbrbPlay* p, int type, unsigned slot, unsigned item, unsigned target, unsigned moveSlot) {
     PbrbBattleCommand c; c.type = type; c.slot = slot; c.item = item; c.target = target; c.moveSlot = moveSlot;
-    if (!PbrbBattleSubmit(&p->battle, &c) && p->battle.eventRead >= p->battle.eventCount)return;
+    /* Mechanics resolve synchronously; waiting/animation frames have
+       advanced the shared state since the previous command. */
+    p->battle.rng = p->rng; int accepted = PbrbBattleSubmit(&p->battle, &c);
+    p->rng = p->battle.rng;
+    if (!accepted && p->battle.eventRead >= p->battle.eventCount)return;
     p->overlay = PBRB_OVERLAY_NONE; p->text.visible = 0; p->endpoint = 0;
     p->battleEventActive = 0; p->battleEventPhase = 0; p->battleWait = 0;
 }
@@ -280,7 +284,8 @@ static void PplayBattleLeave(PbrbPlay* p) {
     int result = p->battleFinished == PBRB_BATTLE_WIN ? PBRB_WORLD_BATTLE_WON :
         p->battleFinished == PBRB_BATTLE_LOSE ? PBRB_WORLD_BATTLE_LOST :
         p->battleFinished == PBRB_BATTLE_CAPTURE ? PBRB_WORLD_BATTLE_CAUGHT : PBRB_WORLD_BATTLE_FLED;
-    p->rng = p->battle.rng; p->scene = PBRB_PLAY_WORLD; p->overlay = PBRB_OVERLAY_NONE;
+    /* Do not restore the last command's snapshot after intervening frames. */
+    p->scene = PBRB_PLAY_WORLD; p->overlay = PBRB_OVERLAY_NONE;
     p->endpoint = 0; p->text.visible = 0; p->worldEvent = 0; p->textUser = 0; p->textTarget = 1;
     p->battleEventActive = 0; p->battleVisual = 0; p->battleAnim.active = 0;
     if (p->battle.setup.safari) { p->gameState.safariBalls = p->battle.safariBalls; p->world->player.safariBalls = p->battle.safariBalls; }

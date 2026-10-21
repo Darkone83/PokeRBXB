@@ -157,6 +157,9 @@
     <ClInclude Include="pbrb_service_data.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="pbrb_rng.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="pbrb_battle_entry.inl">

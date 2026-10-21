@@ -5,6 +5,7 @@
 #define PBRB_BATTLE_INL_INCLUDED
 #include "pbrb_battle.h"
 #include "pbrb_battle_data.h"
+#include "pbrb_rng.h"
 #include <string.h>
 enum {
     PBF_MIST = 1u, PBF_FOCUS = 2u, PBF_REFLECT = 4u, PBF_SCREEN = 8u,
@@ -16,12 +17,14 @@ enum {
 static unsigned PbMin(unsigned a, unsigned b) { return a < b ? a : b; }
 static unsigned PbMax(unsigned a, unsigned b) { return a > b ? a : b; }
 static unsigned PbRandom(unsigned* state) {
-    unsigned x = *state; if (!x)x = 0x6d2b79f5u; x ^= x << 13; x ^= x >> 17; x ^= x << 5; *state = x; return x & 255u;
+    return PbrbRandomNext(state) & 255u;
 }
 static unsigned PbRand(PbrbBattle* b) { return PbRandom(&b->rng); }
 static unsigned PbBound(PbrbBattle* b, unsigned limit) {
     if (!limit)return 0; unsigned n; do { n = PbRand(b); } while (n >= limit); return n;
 }
+/* Original percent operands truncate against 255, not 256: 25 percent is
+   63, 25 percent + 1 is 64, and 50 percent + 1 is 128. */
 static const unsigned char* PbBytes(const PbrbGameRom* r, unsigned at, unsigned n) {
     return r && r->data && at <= r->bytes && n <= r->bytes - at ? r->data + at : 0;
 }
@@ -321,11 +324,11 @@ static int PbCanAct(PbrbBattle* b, int s, unsigned move) {
     if (v->confusion) {
         if (!--v->confusion)PbMessage(b, s, PBRB_BM_CONFUSION_END); else {
             PbMessage(b, s, PBRB_BM_CONFUSED); PbAnimation(b, s, s ? 191u : 190u, 0, 3);
-            if (PbRand(b) >= (s ? 128u : 129u)) { PbSelfHit(b, s); return 0; }
+            if (PbRand(b) >= 128u) { PbSelfHit(b, s); return 0; }
         }
     }
     if (v->disabledMove && v->disabledMove == move) { PbMessage(b, s, PBRB_BM_DISABLED, move); return 0; }
-    if ((v->mon.status & 64u) && PbRand(b) < 64) { PbMessage(b, s, PBRB_BM_PARALYZED); PbClearMulti(b, s); return 0; }
+    if ((v->mon.status & 64u) && PbRand(b) < 63u) { PbMessage(b, s, PBRB_BM_PARALYZED); PbClearMulti(b, s); return 0; }
     return 1;
 }
 static void PbResidual(PbrbBattle* b, int s) {
@@ -386,7 +389,7 @@ static void PbSecondary(PbrbBattle* b, int s, const PbrbGameMove* m) {
     }
     if (e == PBFX_CONFUSION_SIDE_EFFECT) { if (PbRand(b) < 25)PbConfusion(b, 1 - s); return; }
     if (e >= PBFX_ATTACK_DOWN_SIDE_EFFECT && e <= PBFX_SPECIAL_DOWN_SIDE_EFFECT) {
-        if ((d->flags & (PBF_SUBSTITUTE | PBF_MIST | PBF_INVULNERABLE)) || (s && PbRand(b) < 65) || PbRand(b) >= 85)return;
+        if ((d->flags & (PBF_SUBSTITUTE | PBF_MIST | PBF_INVULNERABLE)) || (s && PbRand(b) < 64u) || PbRand(b) >= 85)return;
         PbStat(b, s, 1 - s, e - PBFX_ATTACK_DOWN_SIDE_EFFECT, -1, 1); return;
     }
 }
@@ -425,7 +428,7 @@ static void PbUseMove(PbrbBattle* b, int s, unsigned id, unsigned slot, unsigned
     }
     if ((effect >= PBFX_ATTACK_DOWN1_EFFECT && effect <= PBFX_EVASION_DOWN1_EFFECT) ||
         (effect >= PBFX_ATTACK_DOWN2_EFFECT && effect <= PBFX_EVASION_DOWN2_EFFECT)) {
-        if ((d->flags & PBF_SUBSTITUTE) || (s && PbRand(b) < 65) || !PbAccuracy(b, s, &m)) { PbFailed(b, s); return; }
+        if ((d->flags & PBF_SUBSTITUTE) || (s && PbRand(b) < 64u) || !PbAccuracy(b, s, &m)) { PbFailed(b, s); return; }
         unsigned first = effect >= PBFX_ATTACK_DOWN2_EFFECT ? PBFX_ATTACK_DOWN2_EFFECT : PBFX_ATTACK_DOWN1_EFFECT;
         PbStat(b, s, 1 - s, effect - first, first == PBFX_ATTACK_DOWN2_EFFECT ? -2 : -1); return;
     }
@@ -634,7 +637,11 @@ static unsigned PbEnemySlot(PbrbBattle* b) {
         }
     }
     int best = 100; for (unsigned i = 0; i < 4; ++i)if ((mask & (1u << i)) && score[i] < best)best = score[i];
-    unsigned choice; do { choice = PbRand(b) & 3u; } while (!(mask & (1u << choice)) || score[choice] != best); return choice;
+    /* SelectEnemyMove uses 25 percent, 50 percent and 75 percent - 1,
+       then retries disabled, absent or AI-filtered slots. */
+    unsigned choice; do {
+        unsigned r = PbRand(b); choice = r < 63u ? 0u : r < 127u ? 1u : r < 190u ? 2u : 3u;
+    } while (!(mask & (1u << choice)) || score[choice] != best); return choice;
 }
 static PbrbBattleEvent* PbItemEvent(PbrbBattle* b, int s, unsigned item, int consumed, unsigned target) {
     PbrbBattleEvent* e = PbEvent(b, PBRB_BE_ITEM, s, (unsigned)consumed, target); if (e) { e->item = item; e->party = (int)target; }return e;
@@ -643,24 +650,24 @@ static int PbTrainerAction(PbrbBattle* b) {
     PbrbBattleSide* v = &b->side[1]; if (!b->setup.trainerClass || !v->aiUses)return 0;
     unsigned r = PbRand(b), item = 0, next = 6; int change = 0;
     switch (b->setup.trainerClass) {
-    case PBTRAINER_UNUSED_JUGGLER:case PBTRAINER_JUGGLER:if (r < 65)change = 1; break;
+    case PBTRAINER_UNUSED_JUGGLER:case PBTRAINER_JUGGLER:if (r < 64u)change = 1; break;
     case PBTRAINER_BLACKBELT:if (r < 32)item = PBITEM_X_ATTACK; break;
-    case PBTRAINER_GIOVANNI:if (r < 65)item = PBITEM_GUARD_SPEC; break;
-    case PBTRAINER_COOLTRAINER_M:if (r < 65)item = PBITEM_X_ATTACK; break;
+    case PBTRAINER_GIOVANNI:if (r < 64u)item = PBITEM_GUARD_SPEC; break;
+    case PBTRAINER_COOLTRAINER_M:if (r < 64u)item = PBITEM_X_ATTACK; break;
     case PBTRAINER_COOLTRAINER_F:if (v->mon.hp < v->mon.maxHP / 10u)item = PBITEM_HYPER_POTION; else if (v->mon.hp < v->mon.maxHP / 5u)change = 1; break;
     case PBTRAINER_BROCK:if (v->mon.status)item = PBITEM_FULL_HEAL; break;
-    case PBTRAINER_MISTY:if (r < 65)item = PBITEM_X_DEFEND; break;
-    case PBTRAINER_LT_SURGE:if (r < 65)item = PBITEM_X_SPEED; break;
-    case PBTRAINER_ERIKA:if (r < 129 && v->mon.hp < v->mon.maxHP / 10u)item = PBITEM_SUPER_POTION; break;
-    case PBTRAINER_KOGA:if (r < 65)item = PBITEM_X_ATTACK; break;
-    case PBTRAINER_BLAINE:if (r < 65)item = PBITEM_SUPER_POTION; break;
-    case PBTRAINER_SABRINA:if (r < 65 && v->mon.hp < v->mon.maxHP / 10u)item = PBITEM_HYPER_POTION; break;
+    case PBTRAINER_MISTY:if (r < 64u)item = PBITEM_X_DEFEND; break;
+    case PBTRAINER_LT_SURGE:if (r < 64u)item = PBITEM_X_SPEED; break;
+    case PBTRAINER_ERIKA:if (r < 128u && v->mon.hp < v->mon.maxHP / 10u)item = PBITEM_SUPER_POTION; break;
+    case PBTRAINER_KOGA:if (r < 64u)item = PBITEM_X_ATTACK; break;
+    case PBTRAINER_BLAINE:if (r < 64u)item = PBITEM_SUPER_POTION; break;
+    case PBTRAINER_SABRINA:if (r < 64u && v->mon.hp < v->mon.maxHP / 10u)item = PBITEM_HYPER_POTION; break;
     case PBTRAINER_RIVAL2:if (r < 32 && v->mon.hp < v->mon.maxHP / 5u)item = PBITEM_POTION; break;
     case PBTRAINER_RIVAL3:if (r < 32 && v->mon.hp < v->mon.maxHP / 5u)item = PBITEM_FULL_RESTORE; break;
-    case PBTRAINER_LORELEI:if (r < 129 && v->mon.hp < v->mon.maxHP / 5u)item = PBITEM_SUPER_POTION; break;
-    case PBTRAINER_BRUNO:if (r < 65)item = PBITEM_X_DEFEND; break;
-    case PBTRAINER_AGATHA:if (r < 20)change = 1; else if (r < 129 && v->mon.hp < v->mon.maxHP / 4u)item = PBITEM_SUPER_POTION; break;
-    case PBTRAINER_LANCE:if (r < 129 && v->mon.hp < v->mon.maxHP / 5u)item = PBITEM_HYPER_POTION; break;
+    case PBTRAINER_LORELEI:if (r < 128u && v->mon.hp < v->mon.maxHP / 5u)item = PBITEM_SUPER_POTION; break;
+    case PBTRAINER_BRUNO:if (r < 64u)item = PBITEM_X_DEFEND; break;
+    case PBTRAINER_AGATHA:if (r < 20)change = 1; else if (r < 128u && v->mon.hp < v->mon.maxHP / 4u)item = PBITEM_SUPER_POTION; break;
+    case PBTRAINER_LANCE:if (r < 128u && v->mon.hp < v->mon.maxHP / 5u)item = PBITEM_HYPER_POTION; break;
     default:break;
     }
     if (change && (next = PbNextAlive(b, 1)) < 6) { PbSync(b, 1); PbSend(b, 1, next, 1); return 1; }
@@ -1004,7 +1011,7 @@ int PbrbBattleSubmit(PbrbBattle* b, const PbrbBattleCommand* command) {
     int order[2] = { 0,1 }; int priority[2] = { 0,0 };
     for (int s = 0; s < 2; ++s)priority[s] = b->currentMove[s] == PBMOVE_QUICK_ATTACK ? 1 : b->currentMove[s] == PBMOVE_COUNTER ? -1 : 0;
     if (priority[1] > priority[0] || (priority[0] == priority[1] && (b->side[1].stats[2] > player->stats[2] ||
-        (b->side[1].stats[2] == player->stats[2] && PbRand(b) >= 129)))) {
+        (b->side[1].stats[2] == player->stats[2] && PbRand(b) >= 128u)))) {
         order[0] = 1; order[1] = 0;
     }
     for (int n = 0; n < 2; ++n) {

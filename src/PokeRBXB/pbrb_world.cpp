@@ -4,6 +4,7 @@
    not substitute maps. The private symbol tables below are generated from
    independently rebuilt pokered/pokeblue .sym files. */
 #include "pbrb_world.h"
+#include "pbrb_rng.h"
 
    /* Keep the private map/text tables in this translation unit so every build
       compiles their declarations with their users. Only ROM addresses and
@@ -307,10 +308,16 @@ static void Say(PbrbWorld* w, int text, int next, int species, unsigned flags = 
     w->stage = next; Emit(w, PBRB_WORLD_TEXT, Text(w, text), species, flags);
 }
 static unsigned RandomByte(PbrbWorld* w) {
-    /* Persisted deterministic native RNG. GB DIV depends on instruction timing;
-       scenery movement uses this stream while authored scripts never do. */
-    w->rng = w->rng * 1664525u + 1013904223u;
-    return w->rng >> 24;
+    /* Encounters, NPCs and scripts consume the same state as battles and
+       Pokemon creation. A standalone world retains its local stream. */
+    w->rng = PbrbRandomNext(w->sharedRng ? w->sharedRng : &w->rng);
+    return w->rng & 255u;
+}
+void PbrbWorldSetRandomState(PbrbWorld* w, unsigned* state) {
+    if (!w)return;
+    if (state)w->rng = *state;
+    else if (w->sharedRng)w->rng = *w->sharedRng;
+    w->sharedRng = state;
 }
 static int HeroPixels(const PbrbWorld* w) {
     return w->heroStepLength ? (w->heroStepFrame / 2) * 32 / w->heroStepLength : 0;
@@ -1182,7 +1189,8 @@ size_t PbrbWorldSerialize(const PbrbWorld* w, unsigned char* out, size_t bytes) 
     if (!PbrbWorldCanSave(w) || !out)return 0;
     WorldWriter s = { out,bytes,0,1 };
     WriteDword(&s, 0x31574e50u); WriteWord(&s, 3); WriteByte(&s, w->game); WriteByte(&s, w->romMapId);
-    WriteDword(&s, w->flags); WriteDword(&s, w->frames); WriteDword(&s, w->rng);
+    WriteDword(&s, w->flags); WriteDword(&s, w->frames);
+    WriteDword(&s, w->sharedRng ? *w->sharedRng : w->rng);
     WriteByte(&s, w->heroX); WriteByte(&s, w->heroY); WriteByte(&s, w->facing); WriteByte(&s, w->warpLock);
     WriteByte(&s, w->selectedStarter); WriteByte(&s, w->rivalStarter); WriteByte(&s, w->actorCount); WriteByte(&s, 0);
     for (unsigned ei = 0; ei < PBRB_WORLD_EVENT_BYTES; ++ei)WriteByte(&s, w->eventFlags[ei]);

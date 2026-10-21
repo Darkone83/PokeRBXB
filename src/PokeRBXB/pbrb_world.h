@@ -140,10 +140,16 @@ struct PbrbWorld {
     unsigned char hiddenItems[8];
     int previousMapRom, arrivalWarp, restoring;
     PbrbWorldFieldAnimation fieldAnimation;
+    /* Optional live gameplay owner. Never serialized; standalone worlds
+       use rng. Bind again after a successful Deserialize or a world copy. */
+    unsigned* sharedRng;
 };
 struct PbrbGb;
 
 int PbrbWorldInit(PbrbWorld* world, const unsigned char* rom, size_t size, int mapId);
+/* The owner must outlive the binding. Passing 0 detaches while preserving
+   its current state locally. Init/Deserialize return an unbound world. */
+void PbrbWorldSetRandomState(PbrbWorld*, unsigned* state);
 int PbrbWorldSelectMap(PbrbWorld* world, int mapId);
 /* Legacy local IDs 0..4 are stable. All other maps use MAP_BASE+original ID. */
 int PbrbWorldMapFromRom(unsigned romMapId);

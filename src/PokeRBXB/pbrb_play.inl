@@ -1,6 +1,7 @@
 /* Included by pbrb_engine.cpp. This is native C++98 state and rendering;
    no emulator, interpreter for machine code, desktop runtime, or extra media. */
 #include "pbrb_play.h"
+#include "pbrb_rng.h"
 #include "pbrb_play_data.h"
 #include "pbrb_game_text.h"
 #include "pbrb_audio.h"
@@ -89,9 +90,7 @@ static void PplayAsciiName(unsigned char* to, const char* from) {
     for (int i = 0; from[i] && i < 10; ++i)to[i] = PplayChar(from[i]);
 }
 static unsigned PplayRandom(PbrbPlay* p) {
-    /* Persistent native entropy state, shared with encounter construction. */
-    unsigned x = p->rng; if (!x)x = 0x6d2b79f5u;
-    x ^= x << 13; x ^= x >> 17; x ^= x << 5; p->rng = x; return x;
+    return PbrbRandomNext(&p->rng);
 }
 static void PplayMonsterName(PbrbPlay* p, unsigned species, unsigned char* out) {
     memset(out, 0x50, 11);
@@ -492,7 +491,7 @@ static void PplayStartBattle(PbrbPlay* p, const PbrbWorldEvent* event) {
     PbrbBattleSetup setup; PbrbBattleDefaultSetup(&setup);
     setup.trainerClass = event->trainerClass; setup.trainerNumber = event->trainerId;
     setup.firstRival = (event->flags & PBRB_WORLD_FIRST_RIVAL) != 0;
-    setup.trainerID = p->trainerID; setup.badges = p->gameState.badges; setup.seed = PplayRandom(p);
+    setup.trainerID = p->trainerID; setup.badges = p->gameState.badges;
     setup.expAll = PbrbGameCountItem(p->gameState.bag, p->gameState.bagCount, 0x4b) != 0;
     setup.safari = (event->flags & PBRB_WORLD_SAFARI_BATTLE) != 0; setup.safariBalls = p->gameState.safariBalls;
     setup.ghost = (event->flags & PBRB_WORLD_GHOST) != 0; setup.noCatch = (event->flags & PBRB_WORLD_NO_CATCH) != 0;
@@ -506,7 +505,9 @@ static void PplayStartBattle(PbrbPlay* p, const PbrbWorldEvent* event) {
         unsigned species = event->species ? event->species : (unsigned)event->value;
         valid = PbrbGameMakeMon(&rom, enemies, species, event->level ? event->level : 5, &p->rng, 0, 0, 0);
     }
-    setup.prizeMoney = event->reward ? event->reward : prize;
+    /* Continue after wild DV generation; an earlier snapshot would replay
+       those same two draws at the beginning of battle. */
+    setup.seed = p->rng; setup.prizeMoney = event->reward ? event->reward : prize;
     if (!valid || !PbrbBattleBegin(&p->battle, &rom, p->gameState.party, p->gameState.partyCount, active, enemies, count, &setup)) {
         PplayNotice(p, "Battle data error.", "Reload your save.", PBRB_OVERLAY_NONE); return;
     }
@@ -801,6 +802,7 @@ void PbrbPlayNew(PbrbPlay* p, int speed, int animation, int style, unsigned seed
     PbrbPlayInit(p, w, g, game); PbrbWorldInit(w, g->rom, g->bytes, PBRB_MAP_BEDROOM);
     p->textSpeed = speed >= 0 && speed < 3 ? speed : 1; p->battleAnimation = animation ? 1 : 0; p->battleStyle = style ? 1 : 0;
     p->rng = seed ? seed : 1; p->trainerID = PplayRandom(p) & 65535u;
+    PbrbWorldSetRandomState(w, &p->rng);
     p->hadSave = PbrbHasSave(game); p->scene = PBRB_PLAY_OAK;
     PbrbAudioPlayMusic(PBRB_MUSIC_OAK_SPEECH);
 }
@@ -867,7 +869,10 @@ int PbrbPlayDeserialize(PbrbPlay* p, const unsigned char* data, size_t bytes) {
     if (version == 1 && nextWorld.selectedStarter != (int)next.starter.species)return 0;
     PplaySyncAliases(&next); next.lastWorldSteps = (unsigned)nextWorld.steps;
     next.scene = PBRB_PLAY_WORLD; next.overlay = PBRB_OVERLAY_CONTINUE; next.hadSave = 1;
-    *p = next; *p->world = nextWorld; return 1;
+    *p = next; *p->world = nextWorld;
+    /* Old saves can contain separate world/game states. Keep the saved
+       gameplay state as the owner, without changing saved Pokemon or data. */
+    PbrbWorldSetRandomState(p->world, &p->rng); return 1;
 }
 int PbrbPlayLoad(PbrbPlay* p) {
     static unsigned char buffer[PBRB_PLAY_SAVE_MAX]; unsigned bytes = 0;
@@ -879,6 +884,7 @@ static int PplaySaveCheckpoint(PbrbPlay* p) {
     static PbrbPlay checkpoint; static PbrbWorld world;
     static unsigned char data[PBRB_PLAY_SAVE_MAX];
     checkpoint = *p; world = *p->world; checkpoint.world = &world;
+    PbrbWorldSetRandomState(&world, &checkpoint.rng);
     checkpoint.scene = PBRB_PLAY_WORLD; checkpoint.worldEvent = 0;
     if (world.event.kind == PBRB_WORLD_PC)PbrbWorldAcknowledge(&world, 0);
     size_t bytes = PbrbPlaySerialize(&checkpoint, data, sizeof(data));
@@ -985,6 +991,9 @@ static void PplayWorldPlayer(PbrbPlay*);
 static void PplayWorldStep(PbrbPlay*);
 void PbrbPlayTick(PbrbPlay* p, unsigned held, unsigned pressed) {
     if (!p || !p->gb || !p->world)return;
+    /* VBlank advances the original RNG even while menus/text are waiting.
+       Use the engine's gameplay-frame clock, never display/render calls. */
+    PbrbWorldSetRandomState(p->world, &p->rng); PplayRandom(p);
     ++p->uiFrames;
     /* TrackPlayTime starts on map entry, after OakSpeech/Continue, and
        stops at 255 hours. Menus and battles still count normally. */
