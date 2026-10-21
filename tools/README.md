@@ -16,7 +16,7 @@ The Python launcher installs the required PySide6 interface package automaticall
 
 ### Windows
 
-Double click on **'start.bat'** 
+Double click on **`start.bat`** 
 
 ### Linux & Mac OS
 
