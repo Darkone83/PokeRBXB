@@ -1,0 +1,16 @@
+struct WorldGymRule {
+    int map, beatEvent, tmEvent, tm, pre, win, winExtra, info, received, explanation, noRoom, after, itemSound, badgeSound;
+};
+static const WorldGymRule WORLD_GYMS[8] = {
+    {54,WE_EVENT_BEAT_BROCK,WE_EVENT_GOT_TM34,234,WX_PewterGymBrockPreBattleText,WX_PewterGymBrockReceivedBoulderBadgeText,WX_PewterGymBrockBoulderBadgeInfoText,WX_PewterGymBrockWaitTakeThisText,WX_PewterGymReceivedTM34Text,WX_TM34ExplanationText,WX_PewterGymTM34NoRoomText,WX_PewterGymBrockPostBattleAdviceText,PBRB_SFX_GET_ITEM,PBRB_SFX_LEVEL_UP},
+    {65,WE_EVENT_BEAT_MISTY,WE_EVENT_GOT_TM11,211,WX_CeruleanGymMistyPreBattleText,WX_CeruleanGymMistyReceivedCascadeBadgeText,-1,WX_CeruleanGymMistyCascadeBadgeInfoText,WX_CeruleanGymMistyReceivedTM11Text,-1,WX_CeruleanGymMistyTM11NoRoomText,WX_CeruleanGymMistyTM11ExplanationText,PBRB_SFX_GET_ITEM,-1},
+    {92,WE_EVENT_BEAT_LT_SURGE,WE_EVENT_GOT_TM24,224,WX_VermilionGymLTSurgePreBattleText,WX_VermilionGymLTSurgeReceivedThunderBadgeText,-1,WX_VermilionGymLTSurgeThunderBadgeInfoText,WX_VermilionGymLTSurgeReceivedTM24Text,WX_TM24ExplanationText,WX_VermilionGymLTSurgeTM24NoRoomText,WX_VermilionGymLTSurgePostBattleAdviceText,PBRB_SFX_GET_KEY_ITEM,-1},
+    {134,WE_EVENT_BEAT_ERIKA,WE_EVENT_GOT_TM21,221,WX_CeladonGymErikaPreBattleText,WX_CeladonGymErikaReceivedRainbowBadgeText,-1,WX_CeladonGymRainbowBadgeInfoText,WX_CeladonGymReceivedTM21Text,WX_TM21ExplanationText,WX_CeladonGymTM21NoRoomText,WX_CeladonGymErikaPostBattleAdviceText,PBRB_SFX_GET_ITEM,-1},
+    {157,WE_EVENT_BEAT_KOGA,WE_EVENT_GOT_TM06,206,WX_FuchsiaGymKogaBeforeBattleText,WX_FuchsiaGymKogaReceivedSoulBadgeText,-1,WX_FuchsiaGymKogaSoulBadgeInfoText,WX_FuchsiaGymKogaReceivedTM06Text,WX_FuchsiaGymKogaTM06ExplanationText,WX_FuchsiaGymKogaTM06NoRoomText,WX_FuchsiaGymKogaPostBattleAdviceText,PBRB_SFX_GET_ITEM,-1},
+    {178,WE_EVENT_BEAT_SABRINA,WE_EVENT_GOT_TM46,246,WX_SaffronGymSabrinaText,WX_SaffronGymSabrinaReceivedMarshBadgeText,-1,WX_SaffronGymSabrinaMarshBadgeInfoText,WX_SaffronGymSabrinaReceivedTM46Text,WX_TM46ExplanationText,WX_SaffronGymSabrinaTM46NoRoomText,WX_SaffronGymSabrinaPostBattleAdviceText,PBRB_SFX_GET_ITEM,-1},
+    {166,WE_EVENT_BEAT_BLAINE,WE_EVENT_GOT_TM38,238,WX_CinnabarGymBlainePreBattleText,WX_CinnabarGymBlaineReceivedVolcanoBadgeText,-1,WX_CinnabarGymBlaineVolcanoBadgeInfoText,WX_CinnabarGymBlaineReceivedTM38Text,WX_CinnabarGymBlaineTM38ExplanationText,WX_CinnabarGymBlaineTM38NoRoomText,WX_CinnabarGymBlainePostBattleAdviceText,PBRB_SFX_GET_ITEM,-1},
+    {45,WE_EVENT_BEAT_VIRIDIAN_GYM_GIOVANNI,WE_EVENT_GOT_TM27,227,WX_ViridianGymGiovanniPreBattleText,WX_ViridianGymGiovanniReceivedEarthBadgeText,-1,WX_ViridianGymGiovanniEarthBadgeInfoText,WX_ViridianGymGiovanniReceivedTM27Text,WX_ViridianGymGiovanniTM27ExplanationText,WX_ViridianGymGiovanniTM27NoRoomText,WX_ViridianGymGiovanniPostBattleAdviceText,PBRB_SFX_GET_ITEM,-1},
+};
+static int GymIndex(int map) {
+    for (int i = 0; i < 8; ++i)if (WORLD_GYMS[i].map == map)return i; return -1;
+}

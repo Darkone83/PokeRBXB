@@ -1,0 +1,241 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Media">
+      <UniqueIdentifier>{fd94aff1-7048-4168-966a-088e42b11ed6}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_video.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_input.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_packages.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_ddf.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_glyphs.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_texture.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_stbi.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="xpd_reader.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_ftol.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_engine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_world.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_audio.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_audio_core.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_flow.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_gb.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_title.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_intro.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pbrb_game_text.h">
+      <Filter>Header Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="Media\Copy Assets Here.txt">
+      <Filter>Media</Filter>
+    </Text>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="stb_image.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_video.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_input.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_packages.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_ddf.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_glyphs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_texture.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_stbi.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="xpd_reader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_engine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_world.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_audio.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_audio_core.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_flow.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_gb.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_title.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_intro.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_play.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_play_data.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_world_data.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_battle.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_battle_anim.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_battle_data.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_game.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pbrb_service_data.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="pbrb_battle_entry.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_play.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_play_ui.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_battle.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_battle_anim.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_battle_ui.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_credits.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_dex_ui.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_dialogue_ui.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_game.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_game_menu.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_services.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_world_auxiliary.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_world_catalog.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_world_dialogue.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_world_gameplay.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_world_gyms.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_world_hidden.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_world_mandatory.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_world_progression.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_world_puzzles.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_world_services.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_world_story_text.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_world_traversal.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_world_traversal_data.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="pbrb_world_field.inl">
+      <Filter>Header Files</Filter>
+    </None>
+  </ItemGroup>
+</Project>
