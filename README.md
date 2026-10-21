@@ -2,7 +2,7 @@
 
 <div align=center>
 
-<img src="https://github.com/Darkone83/PokeRBXB/blob/main/img/logo.png" width=400><img src="https://github.com/Darkone83/PokeRBXB/blob/main/img/Darkone83.png" width=400>
+<img src="https://github.com/Darkone83/PokeRBXB/blob/main/img/logo.png" width=300><img src="https://github.com/Darkone83/PokeRBXB/blob/main/img/Darkone83.png" width=400>
 
 </div>
 
