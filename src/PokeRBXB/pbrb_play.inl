@@ -1253,8 +1253,10 @@ static void PplayDrawBattle(PbrbPlay* p) {
         PplayBattlePicture(p, 1, 96, 0);
     if (p->battleStep == PPLAY_BATTLE_PLAYER_EXIT)playerX -= ((18 - p->timer) / 2 + 1) * 8;
     if ((p->battleStep <= PPLAY_BATTLE_PLAYER_EXIT || p->battleStep >= PPLAY_BATTLE_PLAYER_CRY) && !(p->battleHidden & 1u) &&
-        !(p->battleVisual == 2 && p->battleVisualSide == 0 && p->battleVisualTime > 0 && (p->uiFrames & 2u)))
-        PplayBattlePicture(p, 0, playerX, 40);
+        !(p->battleVisual == 2 && p->battleVisualSide == 0 && p->battleVisualTime > 0 && (p->uiFrames & 2u))) {
+        if (p->battleStep == PPLAY_BATTLE_SLIDE_IN)PbrbBattleEntryPlayer(g, p->backPicture, playerX, 40);
+        else PplayBattlePicture(p, 0, playerX, 40);
+    }
     else if (p->battleStep == PPLAY_BATTLE_PLAYER_GROW)PplayGrowPicture(p, p->backPicture, 1, 12 - p->timer);
     if (p->battleStep >= PPLAY_BATTLE_WANTS_TEXT) {
         const int initial = p->battleStep == PPLAY_BATTLE_WANTS_TEXT;

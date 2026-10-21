@@ -13,6 +13,12 @@ int PbrbAudioEffectsBusy(void);
 int PbrbAudioMusicBusy(void);
 /* Load only ROM bank 02 from XPD. No external sound files or packer changes. */
 int PbrbAudioLoadUiPack(const char* xpdPath);
+/* Launcher owns one verified ROM until Stop/Shutdown. A random looping game
+   theme is chosen on each visit, avoiding the previous successful selection.
+   The name is empty when music/output is inactive; no new media is needed. */
+int PbrbAudioStartLauncherMusic(const char* xpdPath, unsigned seed);
+const char* PbrbAudioLauncherTrackName();
+void PbrbAudioStopLauncherMusic();
 int PbrbAudioStartTitle(const unsigned char* rom, size_t bytes);
 int PbrbAudioAttachIntro(const unsigned char* rom, size_t bytes);
 int PbrbAudioStartIntroMusic(void);

@@ -2,6 +2,7 @@
 #include <dsound.h>
 #include "pbrb_audio.h"
 #include "pbrb_audio_core.h"
+#include "pbrb_rng.h"
 #include "xpd_reader.h"
 #include <string.h>
 #include <stdlib.h>
@@ -21,6 +22,54 @@ static int s_lockValid = 0, s_ready = 0;
 static DWORD s_nextChunk = 0;
 static volatile DWORD s_lastRenderTick = 0;
 static PbrbSynth s_synth;
+/* The launcher retains its own ROM only while it owns the synthesizer.
+   Gameplay attaches an independently owned ROM after this one is released. */
+static unsigned char* s_launcherRom = 0;
+static int s_launcherTrack = -1, s_lastLauncherTrack = -1;
+struct LauncherTrack { int music; const char* name; };
+static const LauncherTrack kLauncherTracks[] = {
+    {PBRB_MUSIC_TITLE, "Title Screen"},
+    {PBRB_MUSIC_PALLET, "Pallet Town"},
+    {PBRB_MUSIC_LAB, "Professor Oak's Laboratory"},
+    {PBRB_MUSIC_OAK_SPEECH, "Routes 24 & 25"},
+    {PBRB_MUSIC_POKECENTER, "Pokemon Center"},
+    {PBRB_MUSIC_TRAINER_BATTLE, "Trainer Battle"},
+    {PBRB_MUSIC_WILD_BATTLE, "Wild Pokemon Battle"},
+    {PBRB_MUSIC_GYM_BATTLE, "Gym Leader Battle"},
+    {PBRB_MUSIC_CHAMPION_BATTLE, "Champion Battle"},
+    {PBRB_MUSIC_HALL_OF_FAME, "Hall of Fame"},
+    {PBRB_MUSIC_BIKE, "Bicycle"},
+    {PBRB_MUSIC_SURFING, "Surfing"},
+    {PBRB_MUSIC_GYM, "Pokemon Gym"},
+    {PBRB_MUSIC_CITIES1, "Viridian, Pewter & Saffron City"},
+    {PBRB_MUSIC_CITIES2, "Cerulean & Fuchsia City"},
+    {PBRB_MUSIC_CELADON, "Celadon City"},
+    {PBRB_MUSIC_CINNABAR, "Cinnabar Island"},
+    {PBRB_MUSIC_VERMILION, "Vermilion City"},
+    {PBRB_MUSIC_LAVENDER, "Lavender Town"},
+    {PBRB_MUSIC_SS_ANNE, "S.S. Anne"},
+    {PBRB_MUSIC_SAFARI, "Safari Zone"},
+    {PBRB_MUSIC_ROUTES1, "Routes 1 & 2"},
+    {PBRB_MUSIC_ROUTES3, "Routes 3-10 & 16-22"},
+    {PBRB_MUSIC_ROUTES4, "Routes 11-15"},
+    {PBRB_MUSIC_INDIGO_PLATEAU, "Indigo Plateau"},
+    {PBRB_MUSIC_GAME_CORNER, "Game Corner"},
+    {PBRB_MUSIC_DUNGEON1, "Rocket Hideout"},
+    {PBRB_MUSIC_DUNGEON2, "Viridian Forest"},
+    {PBRB_MUSIC_DUNGEON3, "Mt. Moon"},
+    {PBRB_MUSIC_MANSION, "Pokemon Mansion"},
+    {PBRB_MUSIC_POKEMON_TOWER, "Pokemon Tower"},
+    {PBRB_MUSIC_SILPH_CO, "Silph Co."}
+};
+/* Call with the audio lock held. Detach before freeing any byte the worker
+   can still read; do not disturb a separately attached gameplay ROM. */
+static void ReleaseLauncherMusic() {
+    if (s_launcherRom) {
+        if (s_synth.rom == s_launcherRom)PbrbSynthStopTitle(&s_synth);
+        free(s_launcherRom); s_launcherRom = 0;
+    }
+    s_launcherTrack = -1;
+}
 /* Correct scratch size is 1024*2 samples, not 1024. */
 static short s_stereo[PBRB_FRAMES_PER_CHUNK * 2u];
 
@@ -63,6 +112,7 @@ void PbrbAudioShutdown() {
         WaitForSingleObject(s_thread, 2000);
         CloseHandle(s_thread); s_thread = NULL;
     }
+    PbrbAudioStopTitle();
     if (s_event) { CloseHandle(s_event); s_event = NULL; }
     if (s_buffer) { s_buffer->Stop(); s_buffer->Release(); s_buffer = NULL; }
     if (s_ds) { s_ds->Release(); s_ds = NULL; }
@@ -138,9 +188,65 @@ int PbrbAudioLoadUiPack(const char* path) {
     free(bank);
     return ok;
 }
+void PbrbAudioStopLauncherMusic() {
+    if (s_lockValid)EnterCriticalSection(&s_lock);
+    ReleaseLauncherMusic();
+    if (s_lockValid)LeaveCriticalSection(&s_lock);
+}
+int PbrbAudioStartLauncherMusic(const char* path, unsigned seed) {
+    PbrbAudioStopLauncherMusic();
+    if (!s_ready || !path || !s_thread || WaitForSingleObject(s_thread, 0) != WAIT_TIMEOUT ||
+        (DWORD)(GetTickCount() - s_lastRenderTick) > 1000u)return 0;
+    XpdArchive archive; XpdResource resource; void* content = 0;
+    uint32_t bytes = 0; int valid = 0;
+    memset(&archive, 0, sizeof(archive));
+    if (xpd_open(&archive, path)) {
+        const unsigned expectedCRC = archive.game == XPD_GAME_RED ? 0x9f7fdd53u :
+            archive.game == XPD_GAME_BLUE ? 0xd6da8a1au : 0u;
+        /* InspectPack only checks the edge banks. Require the known complete
+           ROM CRC here; xpd_read_alloc verifies all bytes against that CRC. */
+        valid = expectedCRC && xpd_find(&archive, "rom/full.gb", &resource) &&
+            resource.size == 1048576u && resource.crc32 == expectedCRC &&
+            xpd_read_alloc(&archive, "rom/full.gb", &content, &bytes) && bytes == 1048576u;
+        xpd_close(&archive);
+    }
+    if (!valid) { if (content)free(content); return 0; }
+    const unsigned count = sizeof(kLauncherTracks) / sizeof(kLauncherTracks[0]);
+    const unsigned choices = count - (s_lastLauncherTrack >= 0 ? 1u : 0u);
+    const unsigned limit = ~0u - (~0u % choices);
+    unsigned value;
+    do { value = PbrbRandomNext(&seed); } while (value > limit);
+    unsigned track = (value - 1u) % choices;
+    if (s_lastLauncherTrack >= 0 && track >= (unsigned)s_lastLauncherTrack)++track;
+    if (s_lockValid)EnterCriticalSection(&s_lock);
+    s_launcherRom = (unsigned char*)content;
+    /* Start from clean channel state so a previous game's octave, fade or
+       low-health alarm cannot leak into the menu theme. */
+    PbrbSynthStopTitle(&s_synth);
+    int ok = PbrbSynthAttachIntro(&s_synth, s_launcherRom, bytes) &&
+        PbrbSynthPlayMusic(&s_synth, kLauncherTracks[track].music);
+    if (ok) { s_launcherTrack = (int)track; s_lastLauncherTrack = (int)track; }
+    else ReleaseLauncherMusic();
+    if (s_lockValid)LeaveCriticalSection(&s_lock);
+    return ok;
+}
+const char* PbrbAudioLauncherTrackName() {
+    const char* name = "";
+    if (!s_ready || !s_thread || WaitForSingleObject(s_thread, 0) != WAIT_TIMEOUT ||
+        (DWORD)(GetTickCount() - s_lastRenderTick) > 1000u)return name;
+    if (s_lockValid)EnterCriticalSection(&s_lock);
+    if (s_launcherTrack >= 0 && s_launcherRom && s_synth.rom == s_launcherRom &&
+        s_synth.musicId == kLauncherTracks[s_launcherTrack].music &&
+        !s_synth.decodeErrors && PbrbSynthMusicBusy(&s_synth))
+        name = kLauncherTracks[s_launcherTrack].name;
+    if (s_lockValid)LeaveCriticalSection(&s_lock);
+    return name;
+}
 int PbrbAudioStartTitle(const unsigned char* rom, size_t bytes) {
     int ok;
     if (s_lockValid)EnterCriticalSection(&s_lock);
+    if (rom != s_launcherRom)ReleaseLauncherMusic();
+    s_launcherTrack = -1;
     ok = PbrbSynthStartTitle(&s_synth, rom, bytes);
     if (s_lockValid)LeaveCriticalSection(&s_lock);
     return ok;
@@ -148,6 +254,8 @@ int PbrbAudioStartTitle(const unsigned char* rom, size_t bytes) {
 int PbrbAudioAttachIntro(const unsigned char* rom, size_t bytes) {
     int ok;
     if (s_lockValid)EnterCriticalSection(&s_lock);
+    if (rom != s_launcherRom)ReleaseLauncherMusic();
+    s_launcherTrack = -1;
     ok = PbrbSynthAttachIntro(&s_synth, rom, bytes);
     if (s_lockValid)LeaveCriticalSection(&s_lock);
     return ok;
@@ -197,6 +305,7 @@ int PbrbAudioPlaySfxModified(int effect, unsigned frequency, unsigned tempo) {
 void PbrbAudioStopTitle() {
     if (s_lockValid)EnterCriticalSection(&s_lock);
     PbrbSynthStopTitle(&s_synth);
+    ReleaseLauncherMusic();
     if (s_lockValid)LeaveCriticalSection(&s_lock);
 }
 void PbrbAudioPauseSequencer(unsigned frames) {

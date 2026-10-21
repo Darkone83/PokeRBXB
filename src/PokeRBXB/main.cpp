@@ -98,6 +98,17 @@ static void SaveOptions() {
     g_page = LAUNCHER_SELECT;
     SetMessage("OPTIONS SAVED");
 }
+static void StartLauncherMusic() {
+    if (!PbrbAudioReady())return;
+    /* Prefer the selected version, but either verified pack supplies the
+       shared soundtrack when only one game is installed. */
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        const int index = attempt ? 1 - g_selected : g_selected;
+        if (g_status[index] == PBRB_READY &&
+            PbrbAudioStartLauncherMusic(index ? BLUE_PATH : RED_PATH,
+                (unsigned)GetTickCount()))return;
+    }
+}
 static void TryStartGame() {
     const char* path = g_selected ? BLUE_PATH : RED_PATH;
     const unsigned game = g_selected ? XPD_GAME_BLUE : XPD_GAME_RED;
@@ -112,9 +123,13 @@ static void TryStartGame() {
             "Use the data folder beside default.xbe, then retry.");
         return;
     }
+    /* Release the launcher's owned ROM before the engine allocates its
+       game data, keeping the transition safe on a stock 64 MB Xbox. */
+    PbrbAudioStopLauncherMusic();
     PbrbAudioUi(PBRB_AUDIO_CONFIRM);
     if (!PbrbEngineStart(path, game)) {
         PbrbEngineStop();
+        StartLauncherMusic();
         ShowDialog(DIALOG_RETRY_GAME, "THE GAME COULD NOT START",
             "Check the game data and available memory, then retry.",
             g_selected ? "If needed, copy a fresh blue.xpd to D:\\data\\blue.xpd." :
@@ -161,6 +176,19 @@ static void DrawSlot(int index) {
     }
     PbrbTextCenter(cx, 340, name, 2, 3.1f, 0xB9000000); // offset shadow below
     PbrbTextCenter(cx, 335, name, 2, 3.1f, index == g_selected ? 0xFFFFFFFF : 0xFFD7DCEA);
+}
+static void DrawNowPlaying() {
+    if (g_page != LAUNCHER_SELECT)return;
+    const char* name = PbrbAudioLauncherTrackName();
+    if (!name || !name[0])return;
+    /* Keep the current song between the game cards and the toast/footer.
+       DDF glyph bounds are taller than their nominal tier size. */
+    float scale = 1.8f;
+    const int width = PbrbTextWidth(name, 0, scale);
+    if (width > 1100)scale *= 1100.0f / (float)width;
+    PbrbTextCenter(836, 670, "NOW PLAYING", 0, 1.1f, 0xFFB4C7DE);
+    PbrbTextCenter(838, 699, name, 0, scale, 0xC0000000);
+    PbrbTextCenter(836, 697, name, 0, scale, 0xFFF1F4FA);
 }
 static void DrawFooter() {
     // Embedded controller symbols remain legible with any DDF font.
@@ -220,7 +248,7 @@ static void Render() {
     else {
         ArtworkRect(0, 0, 836, 941, 0xFF330D16); ArtworkRect(836, 0, 836, 941, 0xFF0D1A40);
     }
-    DrawSlot(0); DrawSlot(1); DrawFooter();
+    DrawSlot(0); DrawSlot(1); DrawNowPlaying(); DrawFooter();
     if (g_page != LAUNCHER_SELECT)DrawModal();
     PbrbEnd();
 }
@@ -235,8 +263,7 @@ void __cdecl main() {
     if (!PbrbLoadPNG(BG_PATH, &g_bg))OutputDebugStringA("PokeRBXB: background load failed\n");
     if (!PbrbFontLoad(FONT_PATH))OutputDebugStringA("PokeRBXB: font.DDF missing/invalid\n");
     ScanPacks();
-    if (soundReady && g_status[g_selected] == PBRB_READY)
-        PbrbAudioLoadUiPack(RED_PATH);
+    StartLauncherMusic();
     for (;;) {
         const PbrbEvents input = PbrbInputPoll();
         if (g_ingame) {
@@ -246,8 +273,7 @@ void __cdecl main() {
                 g_ingame = 0;
                 PbrbReleaseTexture(&g_gameBorder);
                 PbrbSetArtworkCanvas(1672, 941);
-                if (soundReady && g_status[g_selected] == PBRB_READY)
-                    PbrbAudioLoadUiPack(g_selected ? BLUE_PATH : RED_PATH);
+                StartLauncherMusic();
                 SetMessage("RETURNED TO LAUNCHER");
             }
         }
@@ -274,8 +300,7 @@ void __cdecl main() {
             if (input.left)g_selected = 0;
             if (input.right)g_selected = 1;
             if (previous != g_selected) {
-                if (soundReady && g_status[g_selected] == PBRB_READY)
-                    PbrbAudioLoadUiPack(g_selected ? BLUE_PATH : RED_PATH);
+                /* Keep the current song playing while changing selection. */
                 PbrbAudioUi(PBRB_AUDIO_MOVE);
             }
             if (input.rescan) {

@@ -9,6 +9,21 @@ static int PbrbBattleEntryFits(const PbrbGb* g, unsigned at, unsigned bytes) {
         (size_t)bytes <= g->bytes - (size_t)at;
 }
 
+static void PbrbBattleEntryPlayer(PbrbGb* g, const unsigned char* backPicture,
+    int x, int y) {
+    if (!g || !backPicture)return;
+    /* SlidePlayerAndEnemySilhouettesOnScreen uses 7x3 OBJ0 tiles for the
+       head: it overlaps the enemy's background scanlines, so color zero
+       must be transparent. The remaining four rows are scrolling BG.
+       After the slide the original replaces the head with opaque BG. */
+    const unsigned char oldObj0 = g->objPalette0;
+    g->objPalette0 = 0xe4u;
+    for (int yy = 0; yy < 56; ++yy)for (int xx = 0; xx < 56; ++xx)
+        PbrbGbPixel(g, x + xx, y + yy, backPicture[yy * 56 + xx],
+            yy < 24 ? 1u : 0u);
+    g->objPalette0 = oldObj0;
+}
+
 static void PbrbBattleEntryPoof(PbrbGb* g, unsigned elapsedFrame) {
     /* POOF_ANIM uses Subanim_0BallPoofEnemy, including its HFLIP transform
        for the player's side. Each block lasts four frames plus the
